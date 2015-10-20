@@ -10,15 +10,27 @@
 #include "config.h"
 #include "siparse.h"
 #include "utils.h"
+#include "builtins.h"
+
+#define true 1
+#define false 0
+#define bool int
 
 
-char line[MAX_LINE_LENGTH + 1];
+#define DEBUG
+
+char linebuf[MAX_LINE_LENGTH + 1];
 char buffer[2 * MAX_LINE_LENGTH + 2]; // bufor dla read
 char* bufferPtr = buffer;
 
 void runCommand(command _command);
 int findEndOfLine(char* tab, int pos, int size); // looking for '\n' char in tab[size] begining from pos
 int sinkRead(void);
+void say(char* text);
+
+int (*(findFunction)(char*))(char **);
+
+
 // and returning -1 if not found, or x>=pos if found
 
 int
@@ -34,7 +46,6 @@ main(int argc, char *argv[])
 	char* bufferptr = buffer;
 	char* lineBegin;
 	char* lineEnd;
-	char line[MAX_LINE_LENGTH];
 
 	int status = fstat(STDIN_FILENO, &statbuffer);
 	if (status != 0)
@@ -52,16 +63,13 @@ main(int argc, char *argv[])
 		if (printPrompt)
 			write(STDOUT_FILENO, PROMPT_STR, sizeof(PROMPT_STR)); // 1. wypisz prompt na std
 
-		bool continue_flag = true;
-		while (continue_flag)
-		{
 			int r = sinkRead();
 			if (r == 0)
 			{
-				continue_flag = false;
+				continue_flag = 0;
 			}
 
-			ln = parseline(line);
+			ln = parseline(linebuf);
 			if (!ln) // 4.2 parsowanie zakonczone bledem
 			{
 				write(STDOUT_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // 1. wypisz prompt na std
@@ -70,14 +78,12 @@ main(int argc, char *argv[])
 
 			pipeline _pipeline = *(ln->pipelines);
 			command _command = **_pipeline;
-
+			
 			runCommand(_command);
-
 
 			int result = 0;
 			waitpid(-1, &result, 0);
 			result = WEXITSTATUS(result);
-		}
 
 	}
 
@@ -85,29 +91,44 @@ main(int argc, char *argv[])
 
 void runCommand(command _command)
 {
-	int childpid = fork();
-	if (childpid == 0)
-	{ // if kid
-		errno = 0;
-		execvp(*_command.argv, _command.argv);
-		char buffer[MAX_LINE_LENGTH + 33];
-		buffer[0] = 0;
-		strcat(buffer, *_command.argv);
-		if (errno == ENOENT)
+	if(findFunction(_command.argv[0]) != NULL)
+	{
+		int result = (findFunction(_command.argv[0]))(_command.argv); // -1 on error
+		if(result == -1)
 		{
-			strcat(buffer, ": no such file or directory\n");
+			char text[MAX_LINE_LENGTH];
+			strcpy(text, "Builtin ");
+			strcat(text, _command.argv[0]);
+			strcat(text, " error.\n");
+			write(STDOUT_FILENO, text, strlen(text));
 		}
-		else if (errno == EACCES)
-		{
-			strcat(buffer, ": permission denied\n");
-		}
-		else
-		{
-			strcat(buffer, ": exec error\n");
-		}
-		write(STDERR_FILENO, buffer, strlen(buffer));
 
-		exit(EXEC_FAILURE);
+	} else
+	{
+		int childpid = fork();
+		if (childpid == 0)
+		{ // if kid
+			errno = 0;
+			execvp(*_command.argv, _command.argv);
+			char buffer[MAX_LINE_LENGTH + 33];
+			buffer[0] = 0;
+			strcat(buffer, *_command.argv);
+			if (errno == ENOENT)
+			{
+				strcat(buffer, ": no such file or directory\n");
+			}
+			else if (errno == EACCES)
+			{
+				strcat(buffer, ": permission denied\n");
+			}
+			else
+			{
+				strcat(buffer, ": exec error\n");
+			}
+			write(STDERR_FILENO, buffer, strlen(buffer));
+	
+			exit(EXEC_FAILURE);
+		}
 	}
 }
 
@@ -131,7 +152,7 @@ int sinkRead()
 	int bytesRead;
 	char* tmpPointer = tmp; // wskazuje pierwsza wolna
 	int tmpused = 0;
-	while (true)
+	while (1)
 	{
 		errno = 0;
 		bytesRead = read(STDIN_FILENO, tmpPointer, MAX_LINE_LENGTH - tmpused); // jezeli bytesread
@@ -139,6 +160,7 @@ int sinkRead()
 		{
 			if (errno == EAGAIN)
 			{
+				say("EAGAIN\n");
 				continue;
 			}
 			return 0;
@@ -146,22 +168,58 @@ int sinkRead()
 		if (bytesRead == 0)
 		{
 			*tmpPointer = '\0';
-			memcpy(line, buffer, bufferPtr - buffer);
-			memcpy(line + bufferPtr - buffer, tmp, tmpPointer-tmp); // a co jesli poprzedni odczyt byl niepelny?
+			memcpy(linebuf, buffer, bufferPtr - buffer);
+			memcpy(linebuf + (bufferPtr - buffer), tmp, tmpPointer-tmp); // a co jesli poprzedni odczyt byl niepelny?
 			bufferPtr = buffer;
 			return 0;
 		}
 		tmpused += bytesRead;
 		tmpPointer += bytesRead;
 		int r = findEndOfLine(tmp, 0, tmpused);
+
 		if (r == -1)
 			continue;
-		memcpy(line, buffer, bufferPtr - buffer);
-		memcpy(line + bufferPtr - buffer, tmp, r+1); // tak samo, a co jesli poprzedni odczyt byl niepelny
+		memcpy(linebuf, buffer, bufferPtr - buffer);
+		memcpy(linebuf + (bufferPtr - buffer), tmp, r+1); // tak samo, a co jesli poprzedni odczyt byl niepelny
+		//linebuf[(bufferPtr - buffer) + r + 1] = '\0'; // was
+		linebuf[(bufferPtr - buffer) + r] = '\0';
 		memcpy(buffer, tmp + r + 1, tmpPointer - tmp - r - 1);
-		bufferPtr = buffer + tmpPointer - tmp - r - 1;
+
+		/*write(STDOUT_FILENO, "line:", 5); // 1. wypisz prompt na std
+		write(STDOUT_FILENO, linebuf, MAX_LINE_LENGTH); // 1. wypisz prompt na std
+		write(STDOUT_FILENO, "\nbuff: ", 7); // 1. wypisz prompt na std
+		write(STDOUT_FILENO, buffer, MAX_LINE_LENGTH); // 1. wypisz prompt na std
+		write(STDOUT_FILENO, "\n ", 2); // 1. wypisz prompt na std*/
+		
+		bufferPtr = buffer + (tmpPointer - tmp) - r - 1;
 		return 1;
 		break;
 	}
 	return 0;
 }
+
+void say(char* text)
+{
+#ifdef DEBUG
+	write(STDOUT_FILENO, text, strlen(text)); // 1. wypisz prompt na std
+#endif
+}
+
+int (*(findFunction)(char* name))(char **) // returns special function that should be executed on main process, or NULL pointer if there is no such function
+{
+	if(name == NULL || name[0] == '\0')
+		return NULL;
+
+	builtin_pair* pointer = builtins_table;
+	while(pointer->name != NULL)
+	{
+		if(strcmp(pointer->name, name) == 0)
+		{
+			return pointer->fun;
+		}
+
+		pointer++;
+	}
+	return NULL;
+}
+

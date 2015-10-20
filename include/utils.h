@@ -9,4 +9,8 @@ void printparsedline(line *);
 
 command * pickfirstcommand(line *);
 
+int cstringtoint(char* str, int* result);
+
+
+
 #endif /* !_UTILS_H_ */

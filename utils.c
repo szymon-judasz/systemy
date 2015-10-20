@@ -80,3 +80,25 @@ pickfirstcommand(line * ln)
 
 	return **(ln->pipelines);
 }
+
+int cstringtoint(char* str, int* result)
+{
+	if(str == NULL || *str == 0)
+	{
+		return -1;
+	}
+	int temp = 0;
+	char* ptr = str;
+	while(*ptr != 0)
+	{
+		if(*ptr < '0' || *ptr > '9')
+			return -1;
+		temp *= 10;
+		temp += *ptr - '0';
+		ptr++;
+	}
+	*result = temp;
+	return 1;
+}
+
+
