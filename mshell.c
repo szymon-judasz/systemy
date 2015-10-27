@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include "string.h"
 #include "config.h"
@@ -19,6 +20,15 @@
 
 #define DEBUG
 
+typedef struct redirDetails{
+	char *in;
+	char *out;
+	int inFlag;
+	int outFlag;
+} redirDetails;
+void redirDetailsInit(redirDetails* data);
+
+
 char linebuf[MAX_LINE_LENGTH + 1];
 char buffer[2 * MAX_LINE_LENGTH + 2]; // bufor dla read
 char* bufferPtr = buffer;
@@ -27,6 +37,9 @@ void runCommand(command _command);
 int findEndOfLine(char* tab, int pos, int size); // looking for '\n' char in tab[size] begining from pos
 int sinkRead(void);
 void say(char* text);
+redirDetails getRedirDetails(command _command);
+
+
 
 int (*(findFunction)(char*))(char **);
 
@@ -105,9 +118,34 @@ void runCommand(command _command)
 
 	} else
 	{
+
 		int childpid = fork();
 		if (childpid == 0)
 		{ // if kid
+			if(_command.redirs != NULL)
+			{
+				redirDetails details = getRedirDetails(_command);
+				if(details.inFlag == 1) // look at freopen()
+				{
+					freopen(details.in, "r", stdin); // a co jak pliku nie ma?
+					//close(STDIN_FILENO);
+					//int fd = open(details.in, O_RDONLY);
+					//int dupresult = dup2(fd ,STDIN_FILENO);
+				}
+				if(details.outFlag == 2)
+				{
+					say("append");
+					freopen(details.out, "a+", stdout);
+				}
+				if(details.outFlag == 1)
+				{
+					say("write");
+					freopen(details.out, "w", stdout);
+				}
+			}	
+	
+
+
 			errno = 0;
 			execvp(*_command.argv, _command.argv);
 			char buffer[MAX_LINE_LENGTH + 33];
@@ -221,5 +259,64 @@ int (*(findFunction)(char* name))(char **) // returns special function that shou
 		pointer++;
 	}
 	return NULL;
+}
+
+redirDetails getRedirDetails(command _command) // need function to check whether only 1 in and only 1 out
+{
+	redirDetails result;
+	redirDetailsInit(&result);
+	//redirection* pointer = _command.redirs; // tutaj blad, po tym jak po tablicy
+	//tutaj blad
+	
+	int i = 0;
+	while(_command.redirs[i] != NULL)
+	{
+		if(IS_RIN(_command.redirs[i]->flags))
+		{
+			result.inFlag = 1;
+			result.in = _command.redirs[i]->filename;
+		}
+		if(IS_ROUT(_command.redirs[i]->flags))
+		{
+			result.outFlag = 1;
+			result.out = _command.redirs[i]->filename;
+		}
+
+		if(IS_RAPPEND(_command.redirs[i]->flags))
+		{
+			result.outFlag = 2;
+			result.out = _command.redirs[i]->filename;
+		}
+
+
+		/*switch(_command.redirs[i]->flags)
+		{
+			case RAPPEND:
+			say("out flag 2");
+			result.outFlag = 2;
+			result.out = _command.redirs[i]->filename;
+			break;
+			case ROUT:
+			say("out flag 1");
+			result.outFlag = 1;
+			result.out = _command.redirs[i]->filename;
+			break;
+			case RIN:
+			say("in flag 1");
+			result.inFlag = 1;
+			result.in = _command.redirs[i]->filename;
+			break;
+		}*/
+		i++;
+	}
+	return result;
+}
+
+void redirDetailsInit(redirDetails* data)
+{
+	data->inFlag = 0;
+	data->outFlag = 0;
+	data->in = NULL;
+	data->out = NULL;
 }
 
