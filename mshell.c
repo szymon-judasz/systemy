@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #include "string.h"
 #include "config.h"
@@ -18,7 +19,29 @@
 #define bool int
 
 
+#define ChildStatusBuffer 100
+
 #define DEBUG
+
+// handler dla sigchild, trzeba ogarnac ktory z background
+// info o backgourndzie przed tuz przed promptem
+// zdefiniowac sobie stala buffor dla trzymania informacji o procesach z backgrounda
+
+typedef struct exitStatus{
+	pid_t pid;
+	int exitTerminatedFlag;
+	int terminationCode;
+} exitStatus;
+exitStatus BGexitStatus[ChildStatusBuffer]; //TODO
+int BGexitStatusIndex = 0;
+void addBGexitStatus(exitStatus); //TODO
+exitStatus removeBGexitStatus(); // return null if empty
+
+pid_t backgroundPID[ChildStatusBuffer];
+//
+
+
+
 
 typedef struct redirDetails{
 	char *in;
@@ -37,9 +60,12 @@ void runCommand(command _command);
 int findEndOfLine(char* tab, int pos, int size); // looking for '\n' char in tab[size] begining from pos
 int sinkRead(void);
 void say(char* text);
+int checkIfLastChar(char* line, char character);
+//int checkIfBgLine(line _line);
+int runLine(line _line);
 redirDetails getRedirDetails(command _command);
 
-
+void registerHandlers(void);
 
 int (*(findFunction)(char*))(char **);
 
@@ -85,14 +111,14 @@ main(int argc, char *argv[])
 			ln = parseline(linebuf);
 			if (!ln) // 4.2 parsowanie zakonczone bledem
 			{
-				write(STDOUT_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // 1. wypisz prompt na std
+				write(STDOUT_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
 				continue;
 			}
 
-			pipeline _pipeline = *(ln->pipelines);
+			pipeline _pipeline = *(ln->pipelines); // has to be modified to run all commands from line
 			command _command = **_pipeline;
 			
-			runCommand(_command);
+			runCommand(_command); // only one, first command
 
 			int result = 0;
 			waitpid(-1, &result, 0);
@@ -118,7 +144,7 @@ void runCommand(command _command)
 
 	} else
 	{
-
+		int waitForProcess = !checkIfBgCommand(_command);
 		int childpid = fork();
 		if (childpid == 0)
 		{ // if kid
@@ -287,36 +313,63 @@ redirDetails getRedirDetails(command _command) // need function to check whether
 			result.outFlag = 2;
 			result.out = _command.redirs[i]->filename;
 		}
-
-
-		/*switch(_command.redirs[i]->flags)
-		{
-			case RAPPEND:
-			say("out flag 2");
-			result.outFlag = 2;
-			result.out = _command.redirs[i]->filename;
-			break;
-			case ROUT:
-			say("out flag 1");
-			result.outFlag = 1;
-			result.out = _command.redirs[i]->filename;
-			break;
-			case RIN:
-			say("in flag 1");
-			result.inFlag = 1;
-			result.in = _command.redirs[i]->filename;
-			break;
-		}*/
 		i++;
 	}
 	return result;
 }
 
-void redirDetailsInit(redirDetails* data)
+/*int checkIfBgLine(line _line)
 {
 	data->inFlag = 0;
 	data->outFlag = 0;
 	data->in = NULL;
 	data->out = NULL;
+}*/
+
+
+int checkIfLastChar(char* line, char character)
+{
+	char* ptr = line;
+	while(*(ptr+1)!= 0)
+		ptr++;
+	return *ptr == character;
+}
+int checkIfBgLine(line _line)
+{
+	return _line.flags == LINBACKGROUND;
+/*
+	
+	if(_command.argv[0] == NULL)
+	{	
+		say("null odd");
+		return 0;
+	}
+	
+	int i = 0;
+	while(_command.argv[i+1] != NULL)
+	{
+	i++;
+	}
+	return strcmp("&", _command.argv[i]);*/
+}
+
+
+void SIGCHLD_handler(int i)
+{
+	pid_t p = waitpid();
+	//pid_t getpgid(pid_t pid); returns proccess group id 
+	// it may not work, store background or foreground process id somewhere
+}
+
+void registerHandlers( )
+{
+	struct sigaction s;
+	s.sa_handler = &SIGCHLD_handler; // functions
+	s.sa_sigaction = NULL; // function2, more precise but unnecessery, if flag = something
+	s.sa_flags = SA_NOCLDSTOP;
+	sigemptyset(&(s.sa_mask));
+	
+	sigaction(SIGCHLD, &s ,NULL);
+
 }
 
