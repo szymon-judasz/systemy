@@ -144,7 +144,7 @@ void runCommand(command _command)
 
 	} else
 	{
-		int waitForProcess = !checkIfBgCommand(_command);
+		int waitForProcess = 1; //!checkIfBgCommand(_command);
 		int childpid = fork();
 		if (childpid == 0)
 		{ // if kid
@@ -318,13 +318,13 @@ redirDetails getRedirDetails(command _command) // need function to check whether
 	return result;
 }
 
-/*int checkIfBgLine(line _line)
+void redirDetailsInit(redirDetails* data)
 {
 	data->inFlag = 0;
 	data->outFlag = 0;
 	data->in = NULL;
 	data->out = NULL;
-}*/
+}
 
 
 int checkIfLastChar(char* line, char character)

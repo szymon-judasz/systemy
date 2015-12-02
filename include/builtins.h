@@ -10,4 +10,8 @@ typedef struct {
 
 extern builtin_pair builtins_table[];
 
+typedef struct {
+	char* name;
+	int sig;
+} str_int_pair;
 #endif /* !_BUILTINS_H_ */
