@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <dirent.h>
 
 #include "builtins.h"
 #include "utils.h"
@@ -13,7 +14,10 @@ int undefined(char *[]);
 int exit_function(char * argv[]);
 int lcd_function(char * argv[]);
 int lkill_function(char * argv[]);
-char* findPWD();
+int lls_function(char * argv[]);
+char* findHOME(); // return pointer to text like 'HOME=blah blah blah'
+char* findPWD(); // same as findHome
+
 
 builtin_pair builtins_table[]={
 	{"exit",	&exit_function},
@@ -24,8 +28,7 @@ builtin_pair builtins_table[]={
 	{NULL,NULL} 
 };
 
-str_int_pair signal_mapping[]=
-{
+str_int_pair signal_mapping[]={
 	{"SIGQUIT", SIGQUIT},
 	{"SIGWINCH", SIGWINCH},
 	//{"SIGRTMAX", SIGRTMAX},
@@ -84,23 +87,12 @@ int exit_function(char * argv[]){
 	if(canexit)
 		exit(0);
 	return -1;
-
-
-	// wrong, exit doesn't take parameters
-	/*int canexit = 1;
-
-	int codeofexit;
-	if(cstringtoint(argv[1], &codeofexit) == -1)
-		canexit 0;
-	if(canexit)
-		return exit(codeofexit);
-	return -1;*/
 }
 
 int lcd_function(char * argv[]){
 	if(argv[1] == 0){
 		char buffer[512];
-		chdir(findPWD() + strlen("HOME="));
+		chdir(findHOME() + strlen("HOME="));
 	} else
 	{
 		chdir(argv[1]);
@@ -108,8 +100,7 @@ int lcd_function(char * argv[]){
 	return 0;
 }
 
-int find_signal_int_code(char* signal_name, int* signal_number)
-{
+int find_signal_int_code(char* signal_name, int* signal_number){
 	//printf("\n\nlooking for: %s\n\n", signal_name);
 	//fflush(stdout);
 	int i;
@@ -158,7 +149,7 @@ int lkill_function(char * argv[]){
 	i--;
 	int sig_number = SIGTERM;
 	if(i == 1){ // there is custom signal
-		converting_result = sscanf(argv[i], "-%d%s", &sig_number, &(to_big_buffer[0]);
+		converting_result = sscanf(argv[i], "-%d%s", &sig_number, &(to_big_buffer[0]));
 		if(converting_result != 1){
 			char signal_text[64];
 			//sscanf(argv[i]+1, "%s", signal_text);
@@ -176,7 +167,7 @@ int lkill_function(char * argv[]){
 	
 }
 
-char* findPWD(){
+char* findHOME(){
 	int i = 0;
 	while(environ[i] != 0){
 		char* home_env = "HOME";
@@ -188,6 +179,44 @@ char* findPWD(){
 	return NULL;
 }
 
+char* findPWD(){
+	int i = 0;
+	while(environ[i] != 0){
+		char* home_env = "PWD";
+		if(strncmp(environ[i], home_env, strlen(home_env)) == 0){
+			return environ[i];
+		}
+		i++;
+	}
+	return NULL;
+}
+
+int lls_error(){
+	fprintf(stderr, "Builtins lls failed.");
+	fflush(stderr);
+}
+
+int lls_function(char * argv[]){
+	if (argv[1] != 0){
+		return lls_error();
+	}
+	
+	DIR* dir;
+	dir = opendir(findPWD() + strlen("PWD="));
+	
+	struct dirent* entry_ptr;
+	
+	
+	while((entry_ptr = readdir(dir)) != 0){
+		// TODO: put logic here that prints filenames, ignores one that starts with '.', and take care of the end of the stream
+	}
+	
+	
+	
+	
+	// closedir(dir);
+	return 0;
+}
 
 
 int undefined(char * argv[]){
