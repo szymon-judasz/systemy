@@ -17,6 +17,7 @@ int lkill_function(char * argv[]);
 int lls_function(char * argv[]);
 char* findHOME(); // return pointer to text like 'HOME=blah blah blah'
 char* findPWD(); // same as findHome
+int adjustPWD(char* path);
 
 
 builtin_pair builtins_table[]={
@@ -24,7 +25,7 @@ builtin_pair builtins_table[]={
 	{"lcd",		&lcd_function},
 	{"lkill",	&lkill_function},
 	{"lecho",	&echo},
-	{"lls",		&undefined},
+	{"lls",		&lls_function},
 	{NULL,NULL} 
 };
 
@@ -93,9 +94,11 @@ int lcd_function(char * argv[]){
 	if(argv[1] == 0){
 		char buffer[512];
 		chdir(findHOME() + strlen("HOME="));
+		adjustPWD("");
 	} else
 	{
 		chdir(argv[1]);
+		adjustPWD(argv[1]);
 	}
 	return 0;
 }
@@ -209,12 +212,40 @@ int lls_function(char * argv[]){
 	
 	while((entry_ptr = readdir(dir)) != 0){
 		// TODO: put logic here that prints filenames, ignores one that starts with '.', and take care of the end of the stream
+		if(*(entry_ptr->d_name) == '.')
+			continue;
+		printf("%s\n", entry_ptr->d_name);
+		fflush(stdout);
 	}
 	
 	
 	
 	
 	// closedir(dir);
+	return 0;
+}
+/* Adjusting PWD. if path is empty-string then pwd will be equal to home
+ * when first char is / then pwd will be set global
+ * otherwise path will be appended to the end of pwd
+ * 
+ * BUG #0001 repeating 'lcd directory' and 'lcd ..' eventualy will cause
+ * segfault
+*/
+int adjustPWD(char* path){
+	char* pwd_pointer = findPWD();
+	char* home_pointer = findHOME();
+	if(pwd_pointer == NULL || home_pointer == NULL) // HOME AND PWD MUST EXIST
+		return -1;
+	if(path[0] == 0){ // home path
+		strcpy(pwd_pointer + strlen("PWD="), home_pointer + strlen("HOME="));
+	} else if(path[0] == '/'){ // absolute path
+		strcpy(pwd_pointer + strlen("PWD="), path);
+	} else // relative path
+	{
+		strcpy(pwd_pointer + strlen(pwd_pointer), "/");
+		strcpy(pwd_pointer + strlen(pwd_pointer), path);
+	}
+	
 	return 0;
 }
 
