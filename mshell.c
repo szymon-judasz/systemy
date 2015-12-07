@@ -118,11 +118,11 @@ main(int argc, char *argv[])
 			pipeline _pipeline = *(ln->pipelines); // has to be modified to run all commands from line
 			command _command = **_pipeline;
 			
-			runCommand(_command); // only one, first command
-
+			runCommand(_command); // only one, first command, returns child pid or -1
 			int result = 0;
 			waitpid(-1, &result, 0);
 			result = WEXITSTATUS(result);
+
 
 	}
 
@@ -145,28 +145,55 @@ void runCommand(command _command)
 	} else
 	{
 		int waitForProcess = 1; //!checkIfBgCommand(_command);
-		int childpid = fork();
+		/* ******************* */
+		/* FORK FORK FORK FORK */
+		/* ******************* */
+		int childpid = fork(); 
 		if (childpid == 0)
-		{ // if kid
+		{ // KID
 			if(_command.redirs != NULL)
 			{
 				redirDetails details = getRedirDetails(_command);
 				if(details.inFlag == 1) // look at freopen()
 				{
-					freopen(details.in, "r", stdin); // a co jak pliku nie ma?
-					//close(STDIN_FILENO);
-					//int fd = open(details.in, O_RDONLY);
-					//int dupresult = dup2(fd ,STDIN_FILENO);
+					errno = 0;
+					int fd = open(details.in, O_RDONLY);
+					int dupresult;
+					if(errno == 0){
+						dupresult = dup2(fd ,STDIN_FILENO);
+					} else{
+						char buffer[128];
+						buffer[0] = 0;
+						strcat(buffer, details.in);
+						if(errno == EACCES){
+							strcat(buffer, ": permission denied\n");
+						} else if(errno == ENOENT){
+							strcat(buffer, ": no such file or directory\n");
+						}
+						write(STDERR_FILENO, buffer, strlen(buffer));
+						exit(EXEC_FAILURE);
+					}
+					/*if(dupresult == -1)
+					{
+						char buffer[128];
+						buffer[0] = 0;
+						strcat(buffer, details.in);
+						strcat(buffer, ": no such file or directory");
+						write(STDERR_FILENO, buffer, strlen(buffer));
+						exit(EXEC_FAILURE);
+					}*/
+
 				}
 				if(details.outFlag == 2)
 				{
-					say("append");
-					freopen(details.out, "a+", stdout);
+					int fd_append = open(details.out, O_WRONLY | O_CREAT | O_APPEND, S_IRWXG);
+					dup2(fd_append, STDOUT_FILENO); // dup2 silently close old file descriptor
 				}
 				if(details.outFlag == 1)
 				{
-					say("write");
-					freopen(details.out, "w", stdout);
+
+					int fd_out = open(details.out, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXG);
+					dup2(fd_out, STDOUT_FILENO); // dup2 silently close old file descriptor
 				}
 			}	
 	
@@ -262,8 +289,7 @@ int sinkRead()
 	return 0;
 }
 
-void say(char* text)
-{
+void say(char* text){
 #ifdef DEBUG
 	write(STDOUT_FILENO, text, strlen(text)); // 1. wypisz prompt na std
 #endif
