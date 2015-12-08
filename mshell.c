@@ -41,8 +41,6 @@ pid_t backgroundPID[ChildStatusBuffer];
 //
 
 
-
-
 typedef struct redirDetails{
 	char *in;
 	char *out;
@@ -56,28 +54,39 @@ char linebuf[MAX_LINE_LENGTH + 1];
 char buffer[2 * MAX_LINE_LENGTH + 2]; // bufor dla read
 char* bufferPtr = buffer;
 
-void runCommand(command _command);
+int savedStdin;
+int savedStdout;
+
+int piped[2];
+
 int findEndOfLine(char* tab, int pos, int size); // looking for '\n' char in tab[size] begining from pos
 int sinkRead(void);
 void say(char* text);
-int checkIfLastChar(char* line, char character);
+//int checkIfLastChar(char* line, char character);
 //int checkIfBgLine(line _line);
-int runLine(line _line);
 redirDetails getRedirDetails(command _command);
+
+void runLine(line* l);
+void runPipeLine(pipeline* p);
+void runCommand(command _command);
+
+void printCommand(command* _command, int hasNext);
 
 void registerHandlers(void);
 
 int (*(findFunction)(char*))(char **);
 
+void saveStreams();
+void retrieveStreams();
+
 
 // and returning -1 if not found, or x>=pos if found
 
 int
-main(int argc, char *argv[])
-{
+main(int argc, char *argv[]){
 	line * ln;
 	command *com;
-
+	saveStreams();
 	int printPrompt = 1;
 	struct stat statbuffer;
 
@@ -91,50 +100,45 @@ main(int argc, char *argv[])
 	{// some errors
 
 	}
-	else
-	{
+	else{
 		if (!S_ISCHR(statbuffer.st_mode))
 			printPrompt = 0;
 	}
-	while (continue_flag)
-	{
+	while (continue_flag){
 		int bytesRead;
 		if (printPrompt)
 			write(STDOUT_FILENO, PROMPT_STR, sizeof(PROMPT_STR)); // 1. wypisz prompt na std
 
-			int r = sinkRead();
-			if (r == 0)
-			{
-				continue_flag = 0;
-			}
+		int r = sinkRead();
+		if (r == 0){
+			continue_flag = 0;
+		}
 
-			ln = parseline(linebuf);
-			if (!ln) // 4.2 parsowanie zakonczone bledem
-			{
-				write(STDOUT_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
-				continue;
-			}
+		ln = parseline(linebuf);
+		if (!ln){
+			// 4.2 parsowanie zakonczone bledem
+			write(STDOUT_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
+			continue;
+		}
 
-			pipeline _pipeline = *(ln->pipelines); // has to be modified to run all commands from line
-			command _command = **_pipeline;
+		runLine(ln);
+		pipeline _pipeline = *(ln->pipelines); // has to be modified to run all commands from line
+		command _command = **_pipeline;
 			
-			runCommand(_command); // only one, first command, returns child pid or -1
-			int result = 0;
-			waitpid(-1, &result, 0);
-			result = WEXITSTATUS(result);
+		//runCommand(_command); // only one, first command, returns child pid or -1
+		int result = 0;
+		waitpid(-1, &result, 0);
+		result = WEXITSTATUS(result);
 
 
 	}
 
 }
 
-void runCommand(command _command)
-{
-	if(findFunction(_command.argv[0]) != NULL)
-	{
+void runCommand(command _command){
+	if(findFunction(_command.argv[0]) != NULL){
 		int result = (findFunction(_command.argv[0]))(_command.argv); // -1 on error
-		if(result == -1)
-		{
+		if(result == -1){
 			char text[MAX_LINE_LENGTH];
 			strcpy(text, "Builtin ");
 			strcat(text, _command.argv[0]);
@@ -142,26 +146,24 @@ void runCommand(command _command)
 			write(STDOUT_FILENO, text, strlen(text));
 		}
 
-	} else
-	{
+	} else{
 		int waitForProcess = 1; //!checkIfBgCommand(_command);
 		/* ******************* */
 		/* FORK FORK FORK FORK */
 		/* ******************* */
 		int childpid = fork(); 
-		if (childpid == 0)
-		{ // KID
-			if(_command.redirs != NULL)
-			{
+		if (childpid == 0){
+			// KID
+			if(_command.redirs != NULL){
 				redirDetails details = getRedirDetails(_command);
-				if(details.inFlag == 1) // look at freopen()
-				{
+				if(details.inFlag == 1){
+					// look at freopen()
 					errno = 0;
 					int fd = open(details.in, O_RDONLY);
 					int dupresult;
 					if(errno == 0){
 						dupresult = dup2(fd ,STDIN_FILENO);
-					} else{
+					}else {
 						char buffer[128];
 						buffer[0] = 0;
 						strcat(buffer, details.in);
@@ -184,13 +186,11 @@ void runCommand(command _command)
 					}*/
 
 				}
-				if(details.outFlag == 2)
-				{
+				if(details.outFlag == 2){
 					int fd_append = open(details.out, O_WRONLY | O_CREAT | O_APPEND, S_IRWXG);
 					dup2(fd_append, STDOUT_FILENO); // dup2 silently close old file descriptor
 				}
-				if(details.outFlag == 1)
-				{
+				if(details.outFlag == 1){
 
 					int fd_out = open(details.out, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXG);
 					dup2(fd_out, STDOUT_FILENO); // dup2 silently close old file descriptor
@@ -204,16 +204,13 @@ void runCommand(command _command)
 			char buffer[MAX_LINE_LENGTH + 33];
 			buffer[0] = 0;
 			strcat(buffer, *_command.argv);
-			if (errno == ENOENT)
-			{
+			if (errno == ENOENT){
 				strcat(buffer, ": no such file or directory\n");
 			}
-			else if (errno == EACCES)
-			{
+			else if (errno == EACCES){
 				strcat(buffer, ": permission denied\n");
 			}
-			else
-			{
+			else{
 				strcat(buffer, ": exec error\n");
 			}
 			write(STDERR_FILENO, buffer, strlen(buffer));
@@ -223,11 +220,11 @@ void runCommand(command _command)
 	}
 }
 
-int findEndOfLine(char* tab, int pos, int size) // looking for '\n' char in tab[size] begining from pos
-{	// and returning -1 if not found, or x>=pos if found
+int findEndOfLine(char* tab, int pos, int size){
+	// looking for '\n' char in tab[size] begining from pos
+	// and returning -1 if not found, or x>=pos if found
 	int p = pos;
-	while (p < size)
-	{
+	while (p < size)	{
 		if (tab[p] == '\n')
 			return p;
 		p++;
@@ -237,18 +234,15 @@ int findEndOfLine(char* tab, int pos, int size) // looking for '\n' char in tab[
 
 
 // returns 0 if EOF, else 1
-int sinkRead()
-{
+int sinkRead(){
 	char tmp[MAX_LINE_LENGTH];
 	int bytesRead;
 	char* tmpPointer = tmp; // wskazuje pierwsza wolna
 	int tmpused = 0;
-	while (1)
-	{
+	while (1){
 		errno = 0;
 		bytesRead = read(STDIN_FILENO, tmpPointer, MAX_LINE_LENGTH - tmpused); // jezeli bytesread
-		if (bytesRead == -1)
-		{
+		if (bytesRead == -1){
 			if (errno == EAGAIN)
 			{
 				say("EAGAIN\n");
@@ -256,8 +250,7 @@ int sinkRead()
 			}
 			return 0;
 		}
-		if (bytesRead == 0)
-		{
+		if (bytesRead == 0){
 			*tmpPointer = '\0';
 			memcpy(linebuf, buffer, bufferPtr - buffer);
 			memcpy(linebuf + (bufferPtr - buffer), tmp, tmpPointer-tmp); // a co jesli poprzedni odczyt byl niepelny?
@@ -295,8 +288,8 @@ void say(char* text){
 #endif
 }
 
-int (*(findFunction)(char* name))(char **) // returns special function that should be executed on main process, or NULL pointer if there is no such function
-{
+int (*(findFunction)(char* name))(char **) {
+	// returns special function that should be executed on main process, or NULL pointer if there is no such function
 	if(name == NULL || name[0] == '\0')
 		return NULL;
 
@@ -313,8 +306,8 @@ int (*(findFunction)(char* name))(char **) // returns special function that shou
 	return NULL;
 }
 
-redirDetails getRedirDetails(command _command) // need function to check whether only 1 in and only 1 out
-{
+redirDetails getRedirDetails(command _command){ 
+	// need function to check whether only 1 in and only 1 out
 	redirDetails result;
 	redirDetailsInit(&result);
 	//redirection* pointer = _command.redirs; // tutaj blad, po tym jak po tablicy
@@ -344,8 +337,7 @@ redirDetails getRedirDetails(command _command) // need function to check whether
 	return result;
 }
 
-void redirDetailsInit(redirDetails* data)
-{
+void redirDetailsInit(redirDetails* data){
 	data->inFlag = 0;
 	data->outFlag = 0;
 	data->in = NULL;
@@ -353,15 +345,13 @@ void redirDetailsInit(redirDetails* data)
 }
 
 
-int checkIfLastChar(char* line, char character)
-{
+int checkIfLastChar(char* line, char character){
 	char* ptr = line;
 	while(*(ptr+1)!= 0)
 		ptr++;
 	return *ptr == character;
 }
-int checkIfBgLine(line _line)
-{
+int checkIfBgLine(line _line){
 	return _line.flags == LINBACKGROUND;
 /*
 	
@@ -380,15 +370,13 @@ int checkIfBgLine(line _line)
 }
 
 
-void SIGCHLD_handler(int i)
-{
+void SIGCHLD_handler(int i){
 	pid_t p = waitpid();
 	//pid_t getpgid(pid_t pid); returns proccess group id 
 	// it may not work, store background or foreground process id somewhere
 }
 
-void registerHandlers( )
-{
+void registerHandlers( ){
 	struct sigaction s;
 	s.sa_handler = &SIGCHLD_handler; // functions
 	s.sa_sigaction = NULL; // function2, more precise but unnecessery, if flag = something
@@ -396,6 +384,69 @@ void registerHandlers( )
 	sigemptyset(&(s.sa_mask));
 	
 	sigaction(SIGCHLD, &s ,NULL);
+}
 
+int compare_command(command* c1, command* c2 )
+{
+	return c1->argv == c2->argv;
+}
+
+void printCommand(command* _command, int hasNext){
+	//printf("\nprintig command");
+	int i;
+	for(i = 0; _command->argv[i] != NULL; i++)
+		printf("%s ", _command->argv[i]);
+	//printf("\n");
+	//if(hasNext)
+	///	printf("It has next");
+	//else
+	//	printf("No it hasnt");
+	printf("\n");
+	fflush(stdout);
+}
+
+void runPipeLine(pipeline* p){
+	//printf("\nprintig pline ");
+	/* Ustaw zrodlo na stdin
+	 * Loop:
+	 * 	przypisz sobie pipe
+	 * fork
+	 * 
+	
+	
+	*/
+	int i;
+	for(i = 0; (*p)[i] != NULL ; i++)
+		printCommand((*p)[i], (*p)[i+1] != NULL);
+	}
+
+void runLine(line* l){
+	//printf("\nprintig line ");
+	int i;
+	for(i = 0; l->pipelines[i] != NULL; i++)
+	{
+		runPipeLine(l->pipelines + i);
+	}
+	fflush(stdout);
+}
+
+void saveStreams(){
+	printf("before");
+	fflush(stdout);
+	savedStdin = dup(0);
+	savedStdout = dup(1);
+	int fd[2];
+	pipe(fd);
+	dup2(fd[1], 1);
+	dup2(fd[0], 0);
+	//close(0);
+	//close(savedStdout);
+	printf("test");
+	fflush(stdout);
+	retrieveStreams();
+}
+void retrieveStreams(){
+	dup2(0, savedStdin);
+	dup2(1, savedStdout); 
 }
 

@@ -229,7 +229,7 @@ int lls_function(char * argv[]){
  * otherwise path will be appended to the end of pwd
  * 
  * BUG #0001 repeating 'lcd directory' and 'lcd ..' eventualy will cause
- * segfault
+ * segfault (I hope)
 */
 int adjustPWD(char* path){
 	char* pwd_pointer = findPWD();
