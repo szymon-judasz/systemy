@@ -55,10 +55,7 @@ char linebuf[MAX_LINE_LENGTH + 1];
 char buffer[2 * MAX_LINE_LENGTH + 2]; // bufor dla read
 char* bufferPtr = buffer;
 
-int savedStdin;
-int savedStdout;
 
-int piped[2];
 
 int findEndOfLine(char* tab, int pos, int size); // looking for '\n' char in tab[size] begining from pos
 int sinkRead(void);
@@ -71,14 +68,11 @@ void runLine(line* l);
 void runPipeLine(pipeline* p);
 void runCommand(command _command, int *fd, int hasNext);
 
-void printCommand(command* _command, int hasNext);
 
 void registerHandlers(void);
 
 int (*(findFunction)(char*))(char **);
 
-void saveStreams();
-void retrieveStreams();
 
 
 // and returning -1 if not found, or x>=pos if found
@@ -138,6 +132,7 @@ main(int argc, char *argv[]){
 
 
 void runCommand(command _command, int *fd, int hasNext){
+	// command from builtins table
 	if(findFunction(_command.argv[0]) != NULL){
 		int result = (findFunction(_command.argv[0]))(_command.argv); // -1 on error
 		if(result == -1){
@@ -147,9 +142,8 @@ void runCommand(command _command, int *fd, int hasNext){
 			strcat(text, " error.\n");
 			write(STDOUT_FILENO, text, strlen(text));
 		}
-
-	} else{
-		int waitForProcess = 1; //!checkIfBgCommand(_command);
+	} else { // regular command
+		//int waitForProcess = 1; //!checkIfBgCommand(_command);
 		
 		/* ******************* */
 		/* FORK FORK FORK FORK */
@@ -166,7 +160,7 @@ void runCommand(command _command, int *fd, int hasNext){
 				dup2(fd[1], 1); // changing stdout
 			}
 			
-			// REDIRS aka < > >>
+			// REDIRS handling
 			if(_command.redirs != NULL){
 				redirDetails details = getRedirDetails(_command);
 				if(details.inFlag == 1){
@@ -174,44 +168,32 @@ void runCommand(command _command, int *fd, int hasNext){
 					errno = 0;
 					int fd = open(details.in, O_RDONLY);
 					int dupresult;
-					if(errno == 0){
+					if(errno == 0) {
 						dupresult = dup2(fd ,STDIN_FILENO);
 					} else {
 						char buffer[128];
 						buffer[0] = 0;
 						strcat(buffer, details.in);
-						if(errno == EACCES){
+						if(errno == EACCES) {
 							strcat(buffer, ": permission denied\n");
-						} else if(errno == ENOENT || errno == ENOTDIR){
+						} else if(errno == ENOENT || errno == ENOTDIR) {
 							strcat(buffer, ": no such file or directory\n");
 						}
 						write(STDERR_FILENO, buffer, strlen(buffer));
 						exit(EXEC_FAILURE);
 					}
-					/*if(dupresult == -1)
-					{
-						char buffer[128];
-						buffer[0] = 0;
-						strcat(buffer, details.in);
-						strcat(buffer, ": no such file or directory");
-						write(STDERR_FILENO, buffer, strlen(buffer));
-						exit(EXEC_FAILURE);
-					}*/
-
 				}
 				if(details.outFlag == 2){
 					int fd_append = open(details.out, O_WRONLY | O_CREAT | O_APPEND, S_IRWXG);
-					dup2(fd_append, STDOUT_FILENO); // dup2 silently close old file descriptor
+					dup2(fd_append, STDOUT_FILENO); 
 				}
 				if(details.outFlag == 1){
 
 					int fd_out = open(details.out, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXG);
-					dup2(fd_out, STDOUT_FILENO); // dup2 silently close old file descriptor
+					dup2(fd_out, STDOUT_FILENO); 
 				}
-			} // end if redirs
+			} // end redirs handling
 	
-
-
 			errno = 0;
 			execvp(*_command.argv, _command.argv);
 			
@@ -403,46 +385,18 @@ void registerHandlers( ){
 	sigaction(SIGCHLD, &s ,NULL);
 }
 
-int compare_command(command* c1, command* c2 ){
-	return c1->argv == c2->argv;
-}
-
-void printCommand(command* _command, int hasNext){
-	//printf("\nprintig command");
-	int i;
-	for(i = 0; _command->argv[i] != NULL; i++)
-		printf("%s ", _command->argv[i]);
-	//printf("\n");
-	//if(hasNext)
-	///	printf("It has next");
-	//else
-	//	printf("No it hasnt");
-	printf("\n");
-	fflush(stdout);
-}
 
 void runPipeLine(pipeline* p){
-	//printf("\nprintig pline ");
-	/* stworz pipe,
-	 * fork
-	 * podepnij pipe
-	 * 2 pipe
-	 * fork
-	 * podepnij itd
-	 * 
-	 * 	*/	 
 	int curpipe[2];
 	int prevpipe[2]; 
 	prevpipe[0] = prevpipe[1] = -1;
 	curpipe[0] = curpipe[1] = -1;
 	int i;
-	for(i = 0; (*p)[i] != NULL ; i++)
-	{
-		prevpipe[0] = curpipe[0]; // rotate pipe
-		prevpipe[1] = curpipe[1]; // rotate pipe
+	for(i = 0; (*p)[i] != NULL ; i++) {
+		prevpipe[0] = curpipe[0];
+		prevpipe[1] = curpipe[1];
 		
-		if((*p)[i+1] != NULL)
-		{
+		if((*p)[i+1] != NULL) {
 			pipe(curpipe);
 		} else {
 			curpipe[0] = -1;
@@ -451,23 +405,23 @@ void runPipeLine(pipeline* p){
 				
 		int fd[2];
 		fd[0] = prevpipe[0];
-		fd[1] = curpipe[1]; // eventualy it has to be closed
+		fd[1] = curpipe[1];
 					
 		runCommand(*((*p)[i]), fd, (*p)[i+1] != NULL);
+	
+		if(prevpipe[0] != -1) {
+			close(prevpipe[0]);
+		}
+		if(prevpipe[1] != -1) {
+			close(prevpipe[1]);
+		}
 	}
-	//printf("\ni =%i", i);
-	fflush(stdout);
-	while(i-->0)
-	{
-		//printf("waiting");
-		//fflush(stdout);
+	
+	
+	while(i-->0) {
 		int status;
 		waitpid(-1, &status, 0);
 	}
-	// wait here for all
-	
-		//printCommand((*p)[i], (*p)[i+1] != NULL);
-
 }
 
 void runLine(line* l){
@@ -480,23 +434,4 @@ void runLine(line* l){
 	fflush(stdout);
 }
 
-void saveStreams(){
-	//printf("before");
-	fflush(stdout);
-	savedStdin = dup(0);
-	savedStdout = dup(1);
-	int fd[2];
-	pipe(fd);
-	//dup2(fd[1], 1);
-	//dup2(fd[0], 0);
-	//close(0);
-	//close(savedStdout);
-	//printf("test");
-	fflush(stdout);
-	//retrieveStreams();
-}
-void retrieveStreams(){
-	dup2(0, savedStdin);
-	dup2(1, savedStdout); 
-}
 
