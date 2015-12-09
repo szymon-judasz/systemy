@@ -32,42 +32,42 @@ builtin_pair builtins_table[]={
 str_int_pair signal_mapping[]={
 	{"SIGQUIT", SIGQUIT},
 	{"SIGWINCH", SIGWINCH},
-	//{"SIGRTMAX", SIGRTMAX},
-	//{"SIGRTMIN", SIGRTMIN},
 	{"SIGTERM", SIGTERM},
 	{"SIGTRAP", SIGTRAP},
 	{"SIGTSTP", SIGTSTP},
 	{"SIGTTIN", SIGTTIN},
 	{"SIGTTOU", SIGTTOU},
-	{"SIGUNUSED", SIGUNUSED},
-	{"SIGURG", SIGURG},
 	{"SIGUSR1", SIGUSR1},
 	{"SIGUSR2", SIGUSR2},
 	{"SIGILL", SIGILL},
 	{"SIGINT", SIGINT},
-	{"SIGIO", SIGIO},
-	{"SIGIOT", SIGIOT},	
 	{"SIGPIPE", SIGPIPE},
-	{"SIGPOLL", SIGPOLL},
 	{"SIGPROF", SIGPROF},
-	{"SIGPWR", SIGPWR},	
 	{"SIGABRT", SIGABRT},
 	{"SIGALRM", SIGALRM},
 	{"SIGSEGV", SIGSEGV},
-	{"SIGSTKFLT", SIGSTKFLT},	
 	{"SIGSTKSZ", SIGSTKSZ},
 	{"SIGSTOP", SIGSTOP},
-	{"SIGSYS", SIGSYS},
 	{"SIGFPE", SIGFPE},	
 	{"SIGHUP", SIGHUP},
 	{"SIGKILL", SIGKILL},
-	{"SIGXCPU", SIGXCPU},
-	{"SIGXFSZ", SIGXFSZ},	
 	{"SIGCHLD", SIGCHLD},
-	{"SIGCLD", SIGCLD},
 	{"SIGCONT", SIGCONT},
 	{"SIGVTALRM", SIGVTALRM},	
 	{"SIGBUS", SIGBUS},
+	//{"SIGSYS", SIGSYS},
+	//{"SIGSTKFLT", SIGSTKFLT},	
+	//{"SIGCLD", SIGCLD},
+	//{"SIGXCPU", SIGXCPU},
+	//{"SIGXFSZ", SIGXFSZ},	
+	//{"SIGPWR", SIGPWR},	
+	//{"SIGRTMAX", SIGRTMAX},
+	//{"SIGRTMIN", SIGRTMIN},
+	//{"SIGUNUSED", SIGUNUSED},
+	//{"SIGURG", SIGURG},
+	//{"SIGPOLL", SIGPOLL},
+	//{"SIGIO", SIGIO},
+	//{"SIGIOT", SIGIOT},	
 	{NULL, 0}
 };
 
@@ -167,7 +167,7 @@ int lkill_function(char * argv[]){
 	printf("pid: %d\nsig: %d", pid, sig_number);
 	fflush(stdout);
 	// kill(pid, sig_number);
-	
+	return 0;
 }
 
 char* findHOME(){
@@ -197,6 +197,7 @@ char* findPWD(){
 int lls_error(){
 	fprintf(stderr, "Builtins lls failed.");
 	fflush(stderr);
+	return -1;
 }
 
 int lls_function(char * argv[]){

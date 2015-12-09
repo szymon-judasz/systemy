@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <string.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -68,7 +69,7 @@ redirDetails getRedirDetails(command _command);
 
 void runLine(line* l);
 void runPipeLine(pipeline* p);
-void runCommand(command _command);
+void runCommand(command _command, int *fd, int hasNext);
 
 void printCommand(command* _command, int hasNext);
 
@@ -86,7 +87,7 @@ int
 main(int argc, char *argv[]){
 	line * ln;
 	command *com;
-	saveStreams();
+	//saveStreams();
 	int printPrompt = 1;
 	struct stat statbuffer;
 
@@ -122,20 +123,21 @@ main(int argc, char *argv[]){
 		}
 
 		runLine(ln);
-		pipeline _pipeline = *(ln->pipelines); // has to be modified to run all commands from line
-		command _command = **_pipeline;
+		//pipeline _pipeline = *(ln->pipelines); // has to be modified to run all commands from line
+		//command _command = **_pipeline;
 			
 		//runCommand(_command); // only one, first command, returns child pid or -1
-		int result = 0;
-		waitpid(-1, &result, 0);
-		result = WEXITSTATUS(result);
+		//int result = 0;
+		//waitpid(-1, &result, 0);
+		//result = WEXITSTATUS(result);
 
 
 	}
 
 }
 
-void runCommand(command _command){
+
+void runCommand(command _command, int *fd, int hasNext){
 	if(findFunction(_command.argv[0]) != NULL){
 		int result = (findFunction(_command.argv[0]))(_command.argv); // -1 on error
 		if(result == -1){
@@ -148,12 +150,23 @@ void runCommand(command _command){
 
 	} else{
 		int waitForProcess = 1; //!checkIfBgCommand(_command);
+		
 		/* ******************* */
 		/* FORK FORK FORK FORK */
 		/* ******************* */
 		int childpid = fork(); 
-		if (childpid == 0){
-			// KID
+		if (childpid == 0){ // KID
+			// switching fd
+			if(fd[0] != -1)
+			{
+				dup2(fd[0], 0); // changing stdin
+			}
+			if(fd[1] != -1 && hasNext)
+			{
+				dup2(fd[1], 1); // changing stdout
+			}
+			
+			// REDIRS aka < > >>
 			if(_command.redirs != NULL){
 				redirDetails details = getRedirDetails(_command);
 				if(details.inFlag == 1){
@@ -163,13 +176,13 @@ void runCommand(command _command){
 					int dupresult;
 					if(errno == 0){
 						dupresult = dup2(fd ,STDIN_FILENO);
-					}else {
+					} else {
 						char buffer[128];
 						buffer[0] = 0;
 						strcat(buffer, details.in);
 						if(errno == EACCES){
 							strcat(buffer, ": permission denied\n");
-						} else if(errno == ENOENT){
+						} else if(errno == ENOENT || errno == ENOTDIR){
 							strcat(buffer, ": no such file or directory\n");
 						}
 						write(STDERR_FILENO, buffer, strlen(buffer));
@@ -195,12 +208,15 @@ void runCommand(command _command){
 					int fd_out = open(details.out, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXG);
 					dup2(fd_out, STDOUT_FILENO); // dup2 silently close old file descriptor
 				}
-			}	
+			} // end if redirs
 	
 
 
 			errno = 0;
 			execvp(*_command.argv, _command.argv);
+			
+			/* Program shouldn't go below */
+			
 			char buffer[MAX_LINE_LENGTH + 33];
 			buffer[0] = 0;
 			strcat(buffer, *_command.argv);
@@ -371,7 +387,8 @@ int checkIfBgLine(line _line){
 
 
 void SIGCHLD_handler(int i){
-	pid_t p = waitpid();
+	int status;
+	pid_t p = waitpid(0, &status, 0);
 	//pid_t getpgid(pid_t pid); returns proccess group id 
 	// it may not work, store background or foreground process id somewhere
 }
@@ -386,8 +403,7 @@ void registerHandlers( ){
 	sigaction(SIGCHLD, &s ,NULL);
 }
 
-int compare_command(command* c1, command* c2 )
-{
+int compare_command(command* c1, command* c2 ){
 	return c1->argv == c2->argv;
 }
 
@@ -407,18 +423,52 @@ void printCommand(command* _command, int hasNext){
 
 void runPipeLine(pipeline* p){
 	//printf("\nprintig pline ");
-	/* Ustaw zrodlo na stdin
-	 * Loop:
-	 * 	przypisz sobie pipe
+	/* stworz pipe,
 	 * fork
+	 * podepnij pipe
+	 * 2 pipe
+	 * fork
+	 * podepnij itd
 	 * 
-	
-	
-	*/
+	 * 	*/	 
+	int curpipe[2];
+	int prevpipe[2]; 
+	prevpipe[0] = prevpipe[1] = -1;
+	curpipe[0] = curpipe[1] = -1;
 	int i;
 	for(i = 0; (*p)[i] != NULL ; i++)
-		printCommand((*p)[i], (*p)[i+1] != NULL);
+	{
+		prevpipe[0] = curpipe[0]; // rotate pipe
+		prevpipe[1] = curpipe[1]; // rotate pipe
+		
+		if((*p)[i+1] != NULL)
+		{
+			pipe(curpipe);
+		} else {
+			curpipe[0] = -1;
+			curpipe[1] = -1;
+		}
+				
+		int fd[2];
+		fd[0] = prevpipe[0];
+		fd[1] = curpipe[1]; // eventualy it has to be closed
+					
+		runCommand(*((*p)[i]), fd, (*p)[i+1] != NULL);
 	}
+	//printf("\ni =%i", i);
+	fflush(stdout);
+	while(i-->0)
+	{
+		//printf("waiting");
+		//fflush(stdout);
+		int status;
+		waitpid(-1, &status, 0);
+	}
+	// wait here for all
+	
+		//printCommand((*p)[i], (*p)[i+1] != NULL);
+
+}
 
 void runLine(line* l){
 	//printf("\nprintig line ");
@@ -431,19 +481,19 @@ void runLine(line* l){
 }
 
 void saveStreams(){
-	printf("before");
+	//printf("before");
 	fflush(stdout);
 	savedStdin = dup(0);
 	savedStdout = dup(1);
 	int fd[2];
 	pipe(fd);
-	dup2(fd[1], 1);
-	dup2(fd[0], 0);
+	//dup2(fd[1], 1);
+	//dup2(fd[0], 0);
 	//close(0);
 	//close(savedStdout);
-	printf("test");
+	//printf("test");
 	fflush(stdout);
-	retrieveStreams();
+	//retrieveStreams();
 }
 void retrieveStreams(){
 	dup2(0, savedStdin);
