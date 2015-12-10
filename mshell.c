@@ -438,8 +438,11 @@ void runPipeLine(pipeline* p){
 	//say("PIPELINE SIGN 436\n");
 	while(i-->0) {
 		int status;
-		waitpid(-1, &status, 0); // not only sigchld may wake it up
+		pid_t pid = 0;
+		pid = waitpid(-1, &status, 0); // not only sigchld may wake it up
 		// TODO : implement proper signal handling
+		if(pid == 0 || pid == -1) // it is enough
+			i++;
 	}
 	//say("PIPELINE SIGN 442\n");
 }
