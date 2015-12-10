@@ -434,7 +434,7 @@ void runPipeLine(pipeline* p){
 			close(prevpipe[1]);
 		}
 	}
-	sleep(1);
+	//sleep(1);
 	//say("PIPELINE SIGN 436\n");
 	while(i-->0) {
 		int status;
