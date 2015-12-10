@@ -55,7 +55,8 @@ char linebuf[MAX_LINE_LENGTH + 1];
 char buffer[2 * MAX_LINE_LENGTH + 2]; // bufor dla read
 char* bufferPtr = buffer;
 
-
+int countPipelineInLine(line* l);
+int countCommandInPipeLine(pipeline* p);
 
 int findEndOfLine(char* tab, int pos, int size); // looking for '\n' char in tab[size] begining from pos
 int sinkRead(void);
@@ -67,6 +68,8 @@ redirDetails getRedirDetails(command _command);
 void runLine(line* l);
 void runPipeLine(pipeline* p);
 void runCommand(command _command, int *fd, int hasNext);
+
+int ifEmptyCommand(command* c);
 
 
 void registerHandlers(void);
@@ -104,19 +107,27 @@ main(int argc, char *argv[]){
 		if (printPrompt)
 			write(STDOUT_FILENO, PROMPT_STR, sizeof(PROMPT_STR)); // 1. wypisz prompt na std
 
+		//say("Before sinkRead\n");
 		int r = sinkRead();
+		//say("After sinkRead\n");
 		if (r == 0){
 			continue_flag = 0;
 		}
-
+		//say("Before ParseLine\n");
 		ln = parseline(linebuf);
+		//say("After parseLine\n");
 		if (!ln){
 			// 4.2 parsowanie zakonczone bledem
 			write(STDOUT_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
 			continue;
 		}
-
-		runLine(ln);
+		
+		if(ln != NULL){
+			//say("Before runLine\n");
+			runLine(ln);
+			//say("After runLine\n");
+		}
+		//ln = NULL;
 		//pipeline _pipeline = *(ln->pipelines); // has to be modified to run all commands from line
 		//command _command = **_pipeline;
 			
@@ -148,16 +159,19 @@ void runCommand(command _command, int *fd, int hasNext){
 		/* ******************* */
 		/* FORK FORK FORK FORK */
 		/* ******************* */
+		//say("FORKING\n");
 		int childpid = fork(); 
 		if (childpid == 0){ // KID
 			// switching fd
 			if(fd[0] != -1)
 			{
 				dup2(fd[0], 0); // changing stdin
+				//close(fd[0]);
 			}
 			if(fd[1] != -1 && hasNext)
 			{
 				dup2(fd[1], 1); // changing stdout
+				//close(fd[1]);
 			}
 			
 			// REDIRS handling
@@ -387,12 +401,13 @@ void registerHandlers( ){
 
 
 void runPipeLine(pipeline* p){
+	//say("PIPELINE SIGN 402\n"); printf("Number of commands in Pipeline = %i\n", countCommandInPipeLine(p)); fflush(stdout);
 	int curpipe[2];
 	int prevpipe[2]; 
 	prevpipe[0] = prevpipe[1] = -1;
 	curpipe[0] = curpipe[1] = -1;
 	int i;
-	for(i = 0; (*p)[i] != NULL ; i++) {
+	for(i = 0; (*p)[i] != NULL && !ifEmptyCommand((*p)[i]); i++) { // for empty, it shouldnt work
 		prevpipe[0] = curpipe[0];
 		prevpipe[1] = curpipe[1];
 		
@@ -402,13 +417,16 @@ void runPipeLine(pipeline* p){
 			curpipe[0] = -1;
 			curpipe[1] = -1;
 		}
-				
+		if(prevpipe[1] != -1){
+			close(prevpipe[1]);
+		}
+		//say("PIPELINE SIGN 421\n");	
 		int fd[2];
 		fd[0] = prevpipe[0];
 		fd[1] = curpipe[1];
-					
+		//say("PIPELINE SIGN 425\n");			
 		runCommand(*((*p)[i]), fd, (*p)[i+1] != NULL);
-	
+		//say("PIPELINE SIGN 427\n");
 		if(prevpipe[0] != -1) {
 			close(prevpipe[0]);
 		}
@@ -416,22 +434,48 @@ void runPipeLine(pipeline* p){
 			close(prevpipe[1]);
 		}
 	}
-	
-	
+	sleep(1);
+	//say("PIPELINE SIGN 436\n");
 	while(i-->0) {
 		int status;
-		waitpid(-1, &status, 0);
+		waitpid(-1, &status, 0); // not only sigchld may wake it up
+		// TODO : implement proper signal handling
 	}
+	//say("PIPELINE SIGN 442\n");
 }
 
 void runLine(line* l){
 	//printf("\nprintig line ");
+	//printf("Number of pipelines = %i\n", countPipelineInLine(l)); fflush(stdout);
 	int i;
 	for(i = 0; l->pipelines[i] != NULL; i++)
 	{
+		//say("before run pipeline");
 		runPipeLine(l->pipelines + i);
+		//say("after run pipeline");
 	}
 	fflush(stdout);
 }
+
+int countPipelineInLine(line* l){
+	int i;
+	for(i = 0; (l->pipelines)[i] != NULL; i++){}
+	
+	return i;
+}
+
+int countCommandInPipeLine(pipeline* p){
+	int i;
+	for(i = 0; (*p)[i] != NULL; i++){}
+	
+	return i;
+}
+
+
+int ifEmptyCommand(command* c)
+{
+	return c->argv[0] == 0;
+}
+
 
 
