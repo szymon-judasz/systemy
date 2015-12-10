@@ -121,7 +121,7 @@ main(int argc, char *argv[]){
 		//say("After parseLine\n");
 		if (!ln){
 			// 4.2 parsowanie zakonczone bledem
-			write(STDOUT_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
+			write(STDERR_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
 			continue;
 		}
 		
@@ -275,6 +275,34 @@ int sinkRead(){
 			return 1;
 		}
 		linebuf[pos++] = buff;
+		if(pos >= MAX_LINE_LENGTH)
+		{
+			write(2, SYNTAX_ERROR_STR, strlen(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
+			linebuf[0] = '\n';
+			linebuf[1] = 0;
+			while(1){
+				errno = 0;
+				status = read(STDIN_FILENO, &buff, 1);
+				if(status == -1){
+					if(errno == EAGAIN){
+						continue;
+					} else {
+						return -1;
+					}
+				}
+				if(status == 0){
+					linebuf[0] = '\n';
+					linebuf[1] = 0;
+					return 0;
+				}
+				if(buff == '\n'){
+					linebuf[0] = '\n';
+					linebuf[1] = 0;
+					return 1;
+				}
+			}
+
+		}
 	}
 	return -1;
 	

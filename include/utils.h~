@@ -9,7 +9,7 @@ void printparsedline(line *);
 
 command * pickfirstcommand(line *);
 
-int cstringtoint(char* str, int* result);
+int cstringtoint(char* str, int* result)
 
 
 

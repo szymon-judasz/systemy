@@ -4,7 +4,7 @@
 #define MAX_LINE_LENGTH 2048
 #define MAX_INPUT_LENGTH 4096
 
-#define SYNTAX_ERROR_STR "Syntax error."
+#define SYNTAX_ERROR_STR "Syntax error.\n"
 
 #define EXEC_FAILURE 127
 
