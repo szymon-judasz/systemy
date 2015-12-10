@@ -115,6 +115,9 @@ main(int argc, char *argv[]){
 		}
 		//say("Before ParseLine\n");
 		ln = parseline(linebuf);
+		//say("LINE IS:\n");
+		//write(STDOUT_FILENO, linebuf, MAX_LINE_LENGTH);
+		//say("\nENDOFLINE\n");
 		//say("After parseLine\n");
 		if (!ln){
 			// 4.2 parsowanie zakonczone bledem
@@ -122,11 +125,11 @@ main(int argc, char *argv[]){
 			continue;
 		}
 		
-		if(ln != NULL){
+		//if(ln != NULL){ // always true condition
 			//say("Before runLine\n");
-			runLine(ln);
+		runLine(ln);
 			//say("After runLine\n");
-		}
+		//}
 		//ln = NULL;
 		//pipeline _pipeline = *(ln->pipelines); // has to be modified to run all commands from line
 		//command _command = **_pipeline;
@@ -245,15 +248,45 @@ int findEndOfLine(char* tab, int pos, int size){
 }
 
 
-// returns 0 if EOF, else 1
+// returns 0 if EOF, -1 if signal, 1 else
 int sinkRead(){
-	char tmp[MAX_LINE_LENGTH];
+	int pos = 0; // pozycja w buforze lini
+	
+	while(1){
+		char buff;
+		int status;
+		errno = 0;
+		status = read(STDIN_FILENO, &buff, 1);
+		if(status == -1){
+			if(errno == EAGAIN){
+				continue;
+			} else {
+				return -1;
+			}
+		}
+		if(status == 0){
+			linebuf[pos++] = '\n';
+			linebuf[pos] = 0;
+			return 0;
+		}
+		if(buff == '\n'){
+			linebuf[pos++] = buff;
+			linebuf[pos] = 0;
+			return 1;
+		}
+		linebuf[pos++] = buff;
+	}
+	return -1;
+	
+	
+	/*char tmp[MAX_LINE_LENGTH];
 	int bytesRead;
 	char* tmpPointer = tmp; // wskazuje pierwsza wolna
 	int tmpused = 0;
 	while (1){
 		errno = 0;
 		bytesRead = read(STDIN_FILENO, tmpPointer, MAX_LINE_LENGTH - tmpused); // jezeli bytesread
+		printf("\nPrzezcytano %i znakow\n", bytesRead); fflush(stdout);
 		if (bytesRead == -1){
 			if (errno == EAGAIN)
 			{
@@ -281,22 +314,22 @@ int sinkRead(){
 		linebuf[(bufferPtr - buffer) + r] = '\0';
 		memcpy(buffer, tmp + r + 1, tmpPointer - tmp - r - 1);
 
-		/*write(STDOUT_FILENO, "line:", 5); // 1. wypisz prompt na std
-		write(STDOUT_FILENO, linebuf, MAX_LINE_LENGTH); // 1. wypisz prompt na std
-		write(STDOUT_FILENO, "\nbuff: ", 7); // 1. wypisz prompt na std
-		write(STDOUT_FILENO, buffer, MAX_LINE_LENGTH); // 1. wypisz prompt na std
-		write(STDOUT_FILENO, "\n ", 2); // 1. wypisz prompt na std*/
+		//write(STDOUT_FILENO, "line:", 5);
+		//write(STDOUT_FILENO, linebuf, MAX_LINE_LENGTH); // 1. wypisz prompt na std
+		//write(STDOUT_FILENO, "\nbuff: ", 7); // 1. wypisz prompt na std
+		//write(STDOUT_FILENO, buffer, MAX_LINE_LENGTH); // 1. wypisz prompt na std
+		//write(STDOUT_FILENO, "\n ", 2); // 1. wypisz prompt na std
 		
 		bufferPtr = buffer + (tmpPointer - tmp) - r - 1;
 		return 1;
 		break;
 	}
-	return 0;
+	return 0;*/
 }
 
 void say(char* text){
 #ifdef DEBUG
-	write(STDOUT_FILENO, text, strlen(text)); // 1. wypisz prompt na std
+	write(STDOUT_FILENO, text, strlen(text));
 #endif
 }
 
@@ -474,9 +507,7 @@ int countCommandInPipeLine(pipeline* p){
 	return i;
 }
 
-
-int ifEmptyCommand(command* c)
-{
+int ifEmptyCommand(command* c){
 	return c->argv[0] == 0;
 }
 
