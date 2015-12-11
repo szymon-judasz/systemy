@@ -91,14 +91,22 @@ int exit_function(char * argv[]){
 }
 
 int lcd_function(char * argv[]){
+	char _b[32] = "Builtin lcd error.\n";
+	if(argv[2] != 0){
+		write(2, _b, strlen(_b));
+	}
 	if(argv[1] == 0){
 		char buffer[512];
 		chdir(findHOME() + strlen("HOME="));
-		adjustPWD("");
+		//adjustPWD("");
 	} else
 	{
-		chdir(argv[1]);
-		adjustPWD(argv[1]);
+		int status;
+		status = chdir(argv[1]);
+		//adjustPWD(argv[1]);
+		if(status == -1) {
+			write(2, _b, strlen(_b));
+		}
 	}
 	return 0;
 }
@@ -121,7 +129,8 @@ int find_signal_int_code(char* signal_name, int* signal_number){
 }
 
 int lkill_error(){
-	fprintf(stderr, "Command kill error.\n" );
+	char _b[32] = "Builtin lkill error.\n" ;
+	write(2, _b, strlen(_b));
 	return BUILTIN_ERROR;
 }
 int lkill_function(char * argv[]){
@@ -164,9 +173,9 @@ int lkill_function(char * argv[]){
 			}
 		}
 	}
-	printf("pid: %d\nsig: %d", pid, sig_number);
-	fflush(stdout);
-	// kill(pid, sig_number);
+	//printf("pid: %d\nsig: %d", pid, sig_number);
+	//fflush(stdout);
+	kill(pid, sig_number);
 	return 0;
 }
 
@@ -206,23 +215,16 @@ int lls_function(char * argv[]){
 	}
 	
 	DIR* dir;
-	dir = opendir(findPWD() + strlen("PWD="));
-	
+	dir = opendir(".");
 	struct dirent* entry_ptr;
-	
-	
 	while((entry_ptr = readdir(dir)) != 0){
-		// TODO: put logic here that prints filenames, ignores one that starts with '.', and take care of the end of the stream
 		if(*(entry_ptr->d_name) == '.')
 			continue;
-		printf("%s\n", entry_ptr->d_name);
-		fflush(stdout);
+		write(STDOUT_FILENO, entry_ptr->d_name, strlen(entry_ptr->d_name));
+		char newlinechar = '\n';
+		write(STDOUT_FILENO, &newlinechar, 1);
 	}
-	
-	
-	
-	
-	// closedir(dir);
+	closedir(dir);
 	return 0;
 }
 /* Adjusting PWD. if path is empty-string then pwd will be equal to home
@@ -252,6 +254,9 @@ int adjustPWD(char* path){
 
 
 int undefined(char * argv[]){
-	fprintf(stderr, "Command %s undefined.\n", argv[0]);
+	//fprintf(stderr, "Command %s undefined.\n", argv[0]);
+	write(2, "Command ", strlen("Command "));
+	write(2, argv[0], strlen(argv[0]));
+	write(2, " undefined.\n", strlen(" undefined.\n"));
 	return BUILTIN_ERROR;
 }

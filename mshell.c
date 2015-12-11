@@ -67,7 +67,7 @@ redirDetails getRedirDetails(command _command);
 
 void runLine(line* l);
 void runPipeLine(pipeline* p);
-void runCommand(command _command, int *fd, int hasNext);
+int runCommand(command _command, int *fd, int hasNext); // returns 1 when child was spawned, otherwise 0 eg. number of spawned processes
 
 int ifEmptyCommand(command* c);
 
@@ -145,7 +145,7 @@ main(int argc, char *argv[]){
 }
 
 
-void runCommand(command _command, int *fd, int hasNext){
+int runCommand(command _command, int *fd, int hasNext){
 	// command from builtins table
 	if(findFunction(_command.argv[0]) != NULL){
 		int result = (findFunction(_command.argv[0]))(_command.argv); // -1 on error
@@ -156,6 +156,7 @@ void runCommand(command _command, int *fd, int hasNext){
 			strcat(text, " error.\n");
 			write(STDOUT_FILENO, text, strlen(text));
 		}
+		return 0;
 	} else { // regular command
 		//int waitForProcess = 1; //!checkIfBgCommand(_command);
 		
@@ -233,6 +234,7 @@ void runCommand(command _command, int *fd, int hasNext){
 			exit(EXEC_FAILURE);
 		}
 	}
+	return 1;
 }
 
 int findEndOfLine(char* tab, int pos, int size){
@@ -468,6 +470,7 @@ void runPipeLine(pipeline* p){
 	prevpipe[0] = prevpipe[1] = -1;
 	curpipe[0] = curpipe[1] = -1;
 	int i;
+	int spawnedProccesses = 0;
 	for(i = 0; (*p)[i] != NULL && !ifEmptyCommand((*p)[i]); i++) { // for empty, it shouldnt work
 		prevpipe[0] = curpipe[0];
 		prevpipe[1] = curpipe[1];
@@ -486,7 +489,7 @@ void runPipeLine(pipeline* p){
 		fd[0] = prevpipe[0];
 		fd[1] = curpipe[1];
 		//say("PIPELINE SIGN 425\n");			
-		runCommand(*((*p)[i]), fd, (*p)[i+1] != NULL);
+		spawnedProccesses += runCommand(*((*p)[i]), fd, (*p)[i+1] != NULL);
 		//say("PIPELINE SIGN 427\n");
 		if(prevpipe[0] != -1) {
 			close(prevpipe[0]);
@@ -497,7 +500,7 @@ void runPipeLine(pipeline* p){
 	}
 	//sleep(1);
 	//say("PIPELINE SIGN 436\n");
-	while(i-->0) {
+	while(spawnedProccesses-->0) {
 		int status;
 		pid_t pid = 0;
 		pid = waitpid(-1, &status, 0); // not only sigchld may wake it up
