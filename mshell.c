@@ -154,7 +154,7 @@ int runCommand(command _command, int *fd, int hasNext){
 			strcpy(text, "Builtin ");
 			strcat(text, _command.argv[0]);
 			strcat(text, " error.\n");
-			write(STDOUT_FILENO, text, strlen(text));
+			write(1, text, strlen(text));
 		}
 		return 0;
 	} else { // regular command
@@ -170,12 +170,12 @@ int runCommand(command _command, int *fd, int hasNext){
 			if(fd[0] != -1)
 			{
 				dup2(fd[0], 0); // changing stdin
-				//close(fd[0]);
+				close(fd[0]);
 			}
 			if(fd[1] != -1 && hasNext)
 			{
 				dup2(fd[1], 1); // changing stdout
-				//close(fd[1]);
+				close(fd[1]);
 			}
 			
 			// REDIRS handling
@@ -184,10 +184,14 @@ int runCommand(command _command, int *fd, int hasNext){
 				if(details.inFlag == 1){
 					// look at freopen()
 					errno = 0;
-					int fd = open(details.in, O_RDONLY);
-					int dupresult;
-					if(errno == 0) {
-						dupresult = dup2(fd ,STDIN_FILENO);
+					int fd_open;
+					fd_open = open(details.in, O_RDONLY);
+					//void* fd;
+					//fd = freopen(details.in, "r", stdin);
+					//int dupresult;
+					if(errno == 0 /*&& fd != 0*/) {
+						dup2(fd_open ,0);
+						close(fd_open);
 					} else {
 						char buffer[128];
 						buffer[0] = 0;
@@ -197,18 +201,19 @@ int runCommand(command _command, int *fd, int hasNext){
 						} else if(errno == ENOENT || errno == ENOTDIR) {
 							strcat(buffer, ": no such file or directory\n");
 						}
-						write(STDERR_FILENO, buffer, strlen(buffer));
+						write(2, buffer, strlen(buffer));
 						exit(EXEC_FAILURE);
 					}
 				}
 				if(details.outFlag == 2){
 					int fd_append = open(details.out, O_WRONLY | O_CREAT | O_APPEND, S_IRWXG);
-					dup2(fd_append, STDOUT_FILENO); 
+					dup2(fd_append, 1); 
+					close(fd_append);
 				}
 				if(details.outFlag == 1){
-
 					int fd_out = open(details.out, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXG);
-					dup2(fd_out, STDOUT_FILENO); 
+					dup2(fd_out, 1);
+					close(fd_out);
 				}
 			} // end redirs handling
 	
@@ -229,7 +234,7 @@ int runCommand(command _command, int *fd, int hasNext){
 			else{
 				strcat(buffer, ": exec error\n");
 			}
-			write(STDERR_FILENO, buffer, strlen(buffer));
+			write(2, buffer, strlen(buffer));
 	
 			exit(EXEC_FAILURE);
 		}
