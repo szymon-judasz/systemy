@@ -8,6 +8,7 @@
 
 #include "builtins.h"
 #include "utils.h"
+#include "include/builtins.h" // may be deleted
 extern char **environ;
 int echo(char*[]);
 int undefined(char *[]);

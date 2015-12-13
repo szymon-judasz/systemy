@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "siparse.h"
+#include "include/siparse.h"
 
 void 
 printcommand(command *pcmd, int k)
