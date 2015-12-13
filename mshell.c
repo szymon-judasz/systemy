@@ -124,20 +124,16 @@ main(int argc, char *argv[]){
 			write(STDERR_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
 			continue;
 		}
-		if (ln->flags != LINBACKGROUND)
-		{
-			runLine(ln);
-		} else
-		{
-			runBGLine(ln);
-		}
+
+		runLine(ln, ln->flags == LINBACKGROUND);
+
 
 	}
 
 }
 
 
-int runCommand(command _command, int *fd, int hasNext, int isBG = 0){
+int runCommand(command _command, int *fd, int hasNext, int isBG){
 	// command from builtins table
 	if(findFunction(_command.argv[0]) != NULL){
 		int result = (findFunction(_command.argv[0]))(_command.argv); // -1 on error
@@ -234,7 +230,7 @@ int runCommand(command _command, int *fd, int hasNext, int isBG = 0){
 		spawned.pid = childpid;
 		spawned.hasRunInBG = isBG;
 		spawned.stillRuning = 1;
-		void addProcessData(spawned);
+		addProcessData(spawned);
 	}
 	return 1;
 }
@@ -382,7 +378,7 @@ void registerHandlers( ){
 }
 
 
-void runPipeLine(pipeline* p, int isBG = 0){
+void runPipeLine(pipeline* p, int isBG){
 	int curpipe[2];
 	int prevpipe[2]; 
 	prevpipe[0] = prevpipe[1] = -1;
@@ -455,7 +451,7 @@ void runPipeLine(pipeline* p, int isBG = 0){
 	//say("PIPELINE SIGN 442\n");
 }
 
-void runLine(line* l, int isBG = 0){
+void runLine(line* l, int isBG){
 	int i;
 	for(i = 0; l->pipelines[i] != NULL; i++){
 		runPipeLine(l->pipelines + i, isBG);
