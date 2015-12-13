@@ -70,10 +70,9 @@ redirDetails getRedirDetails(command _command);
 
 void runLineInBG(line *l);
 
-void runLine(line* l);
-void runBGLine(line* line);
-void runPipeLine(pipeline* p);
-int runCommand(command _command, int *fd, int hasNext); // returns 1 when child was spawned, otherwise 0 eg. number of spawned processes
+void runLine(line* l, int isBG);
+void runPipeLine(pipeline* p, int isBG);
+int runCommand(command _command, int *fd, int hasNext, int isBG); // returns 1 when child was spawned, otherwise 0 eg. number of spawned processes
 
 int ifEmptyCommand(command* c);
 
@@ -138,7 +137,7 @@ main(int argc, char *argv[]){
 }
 
 
-int runCommand(command _command, int *fd, int hasNext){
+int runCommand(command _command, int *fd, int hasNext, int isBG = 0){
 	// command from builtins table
 	if(findFunction(_command.argv[0]) != NULL){
 		int result = (findFunction(_command.argv[0]))(_command.argv); // -1 on error
@@ -165,7 +164,7 @@ int runCommand(command _command, int *fd, int hasNext){
 				dup2(fd[0], 0); // changing stdin
 				close(fd[0]);
 			}
-			if(fd[1] != -1 && hasNext)
+			if(fd[1] != -1 && (hasNext || isBG))
 			{
 				dup2(fd[1], 1); // changing stdout
 				close(fd[1]);
@@ -233,7 +232,7 @@ int runCommand(command _command, int *fd, int hasNext){
 		// parent
 		struct spawnedProcessData spawned;
 		spawned.pid = childpid;
-		spawned.hasRunInBG = 0;
+		spawned.hasRunInBG = isBG;
 		spawned.stillRuning = 1;
 		void addProcessData(spawned);
 	}
@@ -383,7 +382,7 @@ void registerHandlers( ){
 }
 
 
-void runPipeLine(pipeline* p){
+void runPipeLine(pipeline* p, int isBG = 0){
 	int curpipe[2];
 	int prevpipe[2]; 
 	prevpipe[0] = prevpipe[1] = -1;
@@ -393,7 +392,7 @@ void runPipeLine(pipeline* p){
 	for(i = 0; (*p)[i] != NULL && !ifEmptyCommand((*p)[i]); i++) { // for empty, it shouldnt work
 		prevpipe[0] = curpipe[0];
 		prevpipe[1] = curpipe[1];
-		if((*p)[i+1] != NULL) {
+		if((*p)[i+1] != NULL || isBG) {
 			pipe(curpipe);
 		} else {
 			curpipe[0] = -1;
@@ -405,7 +404,7 @@ void runPipeLine(pipeline* p){
 		int fd[2];
 		fd[0] = prevpipe[0];
 		fd[1] = curpipe[1];
-		spawnedProccesses += runCommand(*((*p)[i]), fd, (*p)[i+1] != NULL);
+		spawnedProccesses += runCommand(*((*p)[i]), fd, (*p)[i+1] != NULL, isBG);
 		if(prevpipe[0] != -1) {
 			close(prevpipe[0]);
 		}
@@ -413,6 +412,14 @@ void runPipeLine(pipeline* p){
 			close(prevpipe[1]);
 		}
 	}
+	if (curpipe[0] != -1) {
+		close(curpipe[0]);
+	}
+	if (curpipe[1] != -1) {
+		close(curpipe[1]);
+	}
+	if (isBG)
+		return;
 	int terminatedSpawnedChilds = 0;
 	while (spawnedProccesses>terminatedSpawnedChilds) {
 		int status;
@@ -448,10 +455,10 @@ void runPipeLine(pipeline* p){
 	//say("PIPELINE SIGN 442\n");
 }
 
-void runLine(line* l){
+void runLine(line* l, int isBG = 0){
 	int i;
 	for(i = 0; l->pipelines[i] != NULL; i++){
-		runPipeLine(l->pipelines + i);
+		runPipeLine(l->pipelines + i, isBG);
 	}
 }
 
@@ -544,8 +551,3 @@ void printChildStatus(){
 	}
 }
 
-runBGLine(line* ln)
-{
-	pipeline *p = ln->pipelines[0];
-
-}
