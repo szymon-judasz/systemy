@@ -46,7 +46,6 @@ void removeProcessData(pid_t pid);
 void askForChildStatus();
 void printChildStatus();
 
-
 typedef struct redirDetails{
 	char *in;
 	char *out;
@@ -77,7 +76,9 @@ int runCommand(command _command, int *fd, int hasNext, int isBG); // returns 1 w
 int ifEmptyCommand(command* c);
 
 
-void registerHandlers(void);
+void registerHandlers();
+int aborting;
+void registerDefaultSignalhandler();
 
 int (*(findFunction)(char*))(char **);
 
@@ -90,12 +91,13 @@ main(int argc, char *argv[]){
 	line * ln;
 	command *com;
 	int printPrompt = 1;
-	struct stat statbuffer;
+
 
 	char* bufferptr = buffer;
 	char* lineBegin;
 	char* lineEnd;
-
+	registerHandlers();
+	struct stat statbuffer;
 	int status = fstat(STDIN_FILENO, &statbuffer);
 	if (status != 0)
 	{// some errors
@@ -105,6 +107,7 @@ main(int argc, char *argv[]){
 		if (!S_ISCHR(statbuffer.st_mode))
 			printPrompt = 0;
 	}
+
 	while (1){
 		int bytesRead;
 		askForChildStatus();
@@ -154,6 +157,12 @@ int runCommand(command _command, int *fd, int hasNext, int isBG){
 		//say("FORKING\n");
 		int childpid = fork(); 
 		if (childpid == 0){ // KID
+			// registering default signal handlers
+			registerDefaultSignalhandler();
+			if (isBG)
+			{
+				setsid();
+			}
 			// switching fd
 			if(fd[0] != -1)
 			{
@@ -258,6 +267,8 @@ int sinkRead(){
 		errno = 0;
 		status = read(STDIN_FILENO, &buff, 1);
 		if(status == -1){
+			printf("read failed\n");
+			fflush(stdout);
 			if (errno == EAGAIN || errno == EINTR){
 				continue;
 			} else {
@@ -360,23 +371,6 @@ int checkIfLastChar(char* line, char character){
 }
 
 
-void SIGCHLD_handler(int i){
-	int status;
-	pid_t p = waitpid(0, &status, 0);
-	//pid_t getpgid(pid_t pid); returns proccess group id 
-	// it may not work, store background or foreground process id somewhere
-}
-
-void registerHandlers( ){
-	struct sigaction s;
-	s.sa_handler = &SIGCHLD_handler; // functions
-	s.sa_sigaction = NULL; // function2, more precise but unnecessery, if flag = something
-	s.sa_flags = SA_NOCLDSTOP;
-	sigemptyset(&(s.sa_mask));
-	
-	sigaction(SIGCHLD, &s ,NULL);
-}
-
 
 void runPipeLine(pipeline* p, int isBG){
 	int curpipe[2];
@@ -420,7 +414,10 @@ void runPipeLine(pipeline* p, int isBG){
 	while (spawnedProccesses>terminatedSpawnedChilds) {
 		int status;
 		pid_t pid = 0;
+		aborting = 0;
 		pid = waitpid(-1, &status, 0); // not only sigchld may wake it up
+		if (aborting)
+
 		if(pid == 0 || pid == -1)
 		{
 			continue;
@@ -547,3 +544,55 @@ void printChildStatus(){
 	}
 }
 
+
+
+void SIGCHLD_handler(int i){
+	printf("sigchld\n"); fflush(stdout);
+	askForChildStatus();
+}
+
+void SIGINT_handler(int i)
+{
+	write(1, "SIGINT", 6);
+	aborting = 1;
+}
+
+
+void registerHandlers(){
+	int r;
+	struct sigaction s;
+	printf("registering 2\n"); fflush(stdout);
+	s.sa_handler = &SIGINT_handler; // functions
+	s.sa_sigaction = NULL; // function2, more precise but unnecessery, if flag = something
+	s.sa_flags = 0;
+	sigemptyset(&(s.sa_mask));
+	r = sigaction(SIGINT, &s, NULL);
+	if (r != 0)
+		printf("failed 2\n"); fflush(stdout);
+
+	/*s.sa_handler = SIGCHLD_handler; // functions
+	s.sa_sigaction = NULL; // function2, more precise but unnecessery, if flag = something
+	s.sa_flags = SA_NOCLDSTOP;
+	sigemptyset(&(s.sa_mask));
+	r = sigaction(SIGCHLD, &s, NULL);*/
+
+	if (r != 0)
+		printf("failed 1\n"); fflush(stdout);
+
+	printf("trying to kill 1\n"); fflush(stdout);
+	kill(getpid(), SIGINT);
+	printf("live 1\n"); fflush(stdout);
+}
+void registerDefaultSignalhandler()
+{
+	struct sigaction s;
+	s.sa_handler = SIG_DFL;
+	s.sa_flags = 0;
+	sigemptyset(&(s.sa_mask));
+	sigaction(SIGINT, &s, NULL);
+
+	s.sa_handler = SIG_DFL;
+	s.sa_flags = 0;
+	sigemptyset(&(s.sa_mask));
+	sigaction(SIGCHLD, &s, NULL);
+}
