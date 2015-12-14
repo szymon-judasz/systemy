@@ -11,11 +11,12 @@
 #include "include/builtins.h" // may be deleted
 extern char **environ;
 int echo(char*[]);
-int undefined(char *[]);
 int exit_function(char * argv[]);
 int lcd_function(char * argv[]);
 int lkill_function(char * argv[]);
 int lls_function(char * argv[]);
+
+
 char* findHOME(); // return pointer to text like 'HOME=blah blah blah'
 char* findPWD(); // same as findHome
 int adjustPWD(char* path);
@@ -74,11 +75,10 @@ str_int_pair signal_mapping[]={
 
 int echo( char * argv[]){
 	int i =1;
-	if (argv[i]) printf("%s", argv[i++]);
+	if (argv[i]) write(1, argv[i], strlen(argv[i++]));
 	while  (argv[i])
-		printf(" %s", argv[i++]);
-	printf("\n");
-	fflush(stdout);
+		write(1, argv[i], strlen(argv[i++]));
+	write(1, "\n", 1);
 	return 0;
 }
 
@@ -99,12 +99,9 @@ int lcd_function(char * argv[]){
 	if(argv[1] == 0){
 		char buffer[512];
 		chdir(findHOME() + strlen("HOME="));
-		//adjustPWD("");
-	} else
-	{
+	} else	{
 		int status;
 		status = chdir(argv[1]);
-		//adjustPWD(argv[1]);
 		if(status == -1) {
 			write(2, _b, strlen(_b));
 		}
@@ -113,15 +110,9 @@ int lcd_function(char * argv[]){
 }
 
 int find_signal_int_code(char* signal_name, int* signal_number){
-	//printf("\n\nlooking for: %s\n\n", signal_name);
-	//fflush(stdout);
 	int i;
-	for(i = 0; signal_mapping[i].name != 0; i++)
-	{
-		//printf("lookup: %s\n", signal_mapping[i].name);
-		//fflush(stdout);
-		if(strcmp(signal_name, signal_mapping[i].name) == 0)
-		{
+	for(i = 0; signal_mapping[i].name != 0; i++){
+		if(strcmp(signal_name, signal_mapping[i].name) == 0){
 			*signal_number = signal_mapping[i].sig;
 			return 0;
 		}
@@ -135,7 +126,6 @@ int lkill_error(){
 	return BUILTIN_ERROR;
 }
 int lkill_function(char * argv[]){
-	// get rid of invalid call
 	if(argv[1] == 0){
 		return lkill_error();
 	}
@@ -157,25 +147,17 @@ int lkill_function(char * argv[]){
 		return lkill_error();
 	}
 	
-	// signal determining
-	// argv[i] points to pid_t which is the last argument
 	i--;
 	int sig_number = SIGTERM;
 	if(i == 1){ // there is custom signal
 		converting_result = sscanf(argv[i], "-%d%s", &sig_number, &(to_big_buffer[0]));
 		if(converting_result != 1){
 			char signal_text[64];
-			//sscanf(argv[i]+1, "%s", signal_text);
-			//printf("signal text: %s", signal_text);
-			fflush(stdout);
-			if(find_signal_int_code(&(signal_text[0]), &sig_number) != 0)
-			{
+			if(find_signal_int_code(&(signal_text[0]), &sig_number) != 0){
 				return lkill_error();
 			}
 		}
 	}
-	//printf("pid: %d\nsig: %d", pid, sig_number);
-	//fflush(stdout);
 	kill(pid, sig_number);
 	return 0;
 }
@@ -205,8 +187,8 @@ char* findPWD(){
 }
 
 int lls_error(){
-	fprintf(stderr, "Builtins lls failed.");
-	fflush(stderr);
+	char errortext[64] = "Builtins lls failed.\n";
+	write(2, errortext, strlen(errortext));
 	return -1;
 }
 
@@ -221,43 +203,11 @@ int lls_function(char * argv[]){
 	while((entry_ptr = readdir(dir)) != 0){
 		if(*(entry_ptr->d_name) == '.')
 			continue;
-		write(STDOUT_FILENO, entry_ptr->d_name, strlen(entry_ptr->d_name));
+		write(1, entry_ptr->d_name, strlen(entry_ptr->d_name));
 		char newlinechar = '\n';
-		write(STDOUT_FILENO, &newlinechar, 1);
+		write(1, &newlinechar, 1);
 	}
 	closedir(dir);
 	return 0;
 }
-/* Adjusting PWD. if path is empty-string then pwd will be equal to home
- * when first char is / then pwd will be set global
- * otherwise path will be appended to the end of pwd
- * 
- * BUG #0001 repeating 'lcd directory' and 'lcd ..' eventualy will cause
- * segfault (I hope)
-*/
-int adjustPWD(char* path){
-	char* pwd_pointer = findPWD();
-	char* home_pointer = findHOME();
-	if(pwd_pointer == NULL || home_pointer == NULL) // HOME AND PWD MUST EXIST
-		return -1;
-	if(path[0] == 0){ // home path
-		strcpy(pwd_pointer + strlen("PWD="), home_pointer + strlen("HOME="));
-	} else if(path[0] == '/'){ // absolute path
-		strcpy(pwd_pointer + strlen("PWD="), path);
-	} else // relative path
-	{
-		strcpy(pwd_pointer + strlen(pwd_pointer), "/");
-		strcpy(pwd_pointer + strlen(pwd_pointer), path);
-	}
-	
-	return 0;
-}
 
-
-int undefined(char * argv[]){
-	//fprintf(stderr, "Command %s undefined.\n", argv[0]);
-	write(2, "Command ", strlen("Command "));
-	write(2, argv[0], strlen(argv[0]));
-	write(2, " undefined.\n", strlen(" undefined.\n"));
-	return BUILTIN_ERROR;
-}

@@ -5,7 +5,7 @@
 
 typedef struct {
 	char* name;
-	int (*fun)(char**);  // tabela arg jak argv, pod zerem ma byc nazwa funkcji
+	int (*fun)(char**);
 } builtin_pair;
 
 extern builtin_pair builtins_table[];

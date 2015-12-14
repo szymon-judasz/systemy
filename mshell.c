@@ -26,9 +26,6 @@
 #include "include/siparse.h"
 #include "include/builtins.h"
 
-// handler dla sigchild, trzeba ogarnac ktory z background
-// info o backgourndzie przed tuz przed promptem
-// zdefiniowac sobie stala buffor dla trzymania informacji o procesach z backgrounda
 
 typedef struct spawnedProcessData{
 	pid_t pid;
@@ -39,7 +36,7 @@ typedef struct spawnedProcessData{
 } spawnedProcessData;
 
 int amountSpawnedProcess = 0;
-spawnedProcessData BGexitStatus[ChildStatusBuffer]; //TODO
+spawnedProcessData BGexitStatus[ChildStatusBuffer];
 int findProcessData(pid_t pid);
 void addProcessData(struct spawnedProcessData pData);
 void removeProcessData(pid_t pid);
@@ -83,9 +80,6 @@ void registerDefaultSignalhandler();
 int (*(findFunction)(char*))(char **);
 
 
-
-// and returning -1 if not found, or x>=pos if found
-
 int
 main(int argc, char *argv[]){
 	line * ln;
@@ -98,11 +92,8 @@ main(int argc, char *argv[]){
 	char* lineEnd;
 	registerHandlers();
 	struct stat statbuffer;
-	int status = fstat(STDIN_FILENO, &statbuffer);
-	if (status != 0)
-	{// some errors
-
-	}
+	int status = fstat(0, &statbuffer);
+	if (status != 0){}
 	else{
 		if (!S_ISCHR(statbuffer.st_mode))
 			printPrompt = 0;
@@ -111,38 +102,33 @@ main(int argc, char *argv[]){
 	while (1){
 		int bytesRead;
 		askForChildStatus();
-		if (printPrompt)
-		{
+		if (printPrompt){
 			printChildStatus();
-			write(1, PROMPT_STR, sizeof(PROMPT_STR)); // 1. wypisz prompt na std
+			write(1, PROMPT_STR, sizeof(PROMPT_STR));
 		}
-
 
 		int r = sinkRead();
 		if (r == 0){
 			break;
-		} if (r == -2)
-		{
+		} if (r == -2){
+			write(1, "\n", 1);
 			continue;
 		}
 		ln = parseline(linebuf);
 		if (!ln){
-			write(STDERR_FILENO, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
+			write(3, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR));
 			continue;
 		}
 
 		runLine(ln, ln->flags == LINBACKGROUND);
-
-
 	}
-
 }
 
 
 int runCommand(command _command, int *fd, int hasNext, int isBG){
 	// command from builtins table
 	if(findFunction(_command.argv[0]) != NULL){
-		int result = (findFunction(_command.argv[0]))(_command.argv); // -1 on error
+		int result = (findFunction(_command.argv[0]))(_command.argv);
 		if(result == -1){
 			char text[MAX_LINE_LENGTH];
 			strcpy(text, "Builtin ");
@@ -151,30 +137,26 @@ int runCommand(command _command, int *fd, int hasNext, int isBG){
 			write(1, text, strlen(text));
 		}
 		return 0;
-	} else { // regular command
-		//int waitForProcess = 1; //!checkIfBgCommand(_command);
-		
+	} else { 
 		/* ******************* */
 		/* FORK FORK FORK FORK */
 		/* ******************* */
-		//say("FORKING\n");
 		int childpid = fork(); 
 		if (childpid == 0){ // KID
 			// registering default signal handlers
 			registerDefaultSignalhandler();
-			if (isBG)
-			{
+			if (isBG) {
 				setsid();
 			}
 			// switching fd
 			if(fd[0] != -1)
 			{
-				dup2(fd[0], 0); // changing stdin
+				dup2(fd[0], 0);
 				close(fd[0]);
 			}
 			if(fd[1] != -1 && (hasNext || isBG))
 			{
-				dup2(fd[1], 1); // changing stdout
+				dup2(fd[1], 1);
 				close(fd[1]);
 			}
 			
@@ -182,14 +164,11 @@ int runCommand(command _command, int *fd, int hasNext, int isBG){
 			if(_command.redirs != NULL){
 				redirDetails details = getRedirDetails(_command);
 				if(details.inFlag == 1){
-					// look at freopen()
 					errno = 0;
 					int fd_open;
 					fd_open = open(details.in, O_RDONLY);
-					//void* fd;
-					//fd = freopen(details.in, "r", stdin);
-					//int dupresult;
-					if(errno == 0 /*&& fd != 0*/) {
+
+					if(errno == 0) {
 						dup2(fd_open ,0);
 						close(fd_open);
 					} else {
@@ -248,10 +227,9 @@ int runCommand(command _command, int *fd, int hasNext, int isBG){
 }
 
 int findEndOfLine(char* tab, int pos, int size){
-	// looking for '\n' char in tab[size] begining from pos
-	// and returning -1 if not found, or x>=pos if found
+
 	int p = pos;
-	while (p < size)	{
+	while (p < size){
 		if (tab[p] == '\n')
 			return p;
 		p++;
@@ -259,19 +237,16 @@ int findEndOfLine(char* tab, int pos, int size){
 	return -1;
 }
 
-
 // returns 0 if EOF, -1 if signal, 1 else, -2 if sigint
 int sinkRead(){
-	int pos = 0; // pozycja w buforze lini
-	
+	int pos = 0;
 	while(1){
 		char buff;
 		int status;
 		errno = 0;
-		status = read(STDIN_FILENO, &buff, 1);
+		status = read(0, &buff, 1);
 		if(status == -1){
-			if (errno == EINTR)
-			{
+			if (errno == EINTR)	{
 				return -2;
 			} else if (errno == EAGAIN){
 				continue;
@@ -292,12 +267,12 @@ int sinkRead(){
 		linebuf[pos++] = buff;
 		if(pos >= MAX_LINE_LENGTH)
 		{
-			write(2, SYNTAX_ERROR_STR, strlen(SYNTAX_ERROR_STR)); // TODO, sprawdz czy stdout czy stderr
+			write(2, SYNTAX_ERROR_STR, strlen(SYNTAX_ERROR_STR)); 
 			linebuf[0] = '\n';
 			linebuf[1] = 0;
 			while(1){
 				errno = 0;
-				status = read(STDIN_FILENO, &buff, 1);
+				status = read(0, &buff, 1);
 				if(status == -1){
 					if(errno == EAGAIN){
 						continue;
@@ -316,11 +291,10 @@ int sinkRead(){
 					return 1;
 				}
 			}
-
-		}
+		} // if end buffer overflow
 	}
 	return -1;
-	}
+}
 
 int (*(findFunction)(char* name))(char **) {
 	if(name == NULL || name[0] == '\0')
@@ -336,10 +310,8 @@ int (*(findFunction)(char* name))(char **) {
 }
 
 redirDetails getRedirDetails(command _command){ 
-	// need function to check whether only 1 in and only 1 out
 	redirDetails result;
 	redirDetailsInit(&result);
-	
 	int i = 0;
 	while(_command.redirs[i] != NULL){
 		if(IS_RIN(_command.redirs[i]->flags)){
@@ -366,16 +338,6 @@ void redirDetailsInit(redirDetails* data){
 	data->out = NULL;
 }
 
-
-int checkIfLastChar(char* line, char character){
-	char* ptr = line;
-	while(*(ptr+1)!= 0)
-		ptr++;
-	return *ptr == character;
-}
-
-
-
 void runPipeLine(pipeline* p, int isBG){
 	int curpipe[2];
 	int prevpipe[2]; 
@@ -383,7 +345,7 @@ void runPipeLine(pipeline* p, int isBG){
 	curpipe[0] = curpipe[1] = -1;
 	int i;
 	int spawnedProccesses = 0;
-	for(i = 0; (*p)[i] != NULL && !ifEmptyCommand((*p)[i]); i++) { // for empty, it shouldnt work
+	for(i = 0; (*p)[i] != NULL && !ifEmptyCommand((*p)[i]); i++) {
 		prevpipe[0] = curpipe[0];
 		prevpipe[1] = curpipe[1];
 		if((*p)[i+1] != NULL || isBG) {
@@ -419,9 +381,9 @@ void runPipeLine(pipeline* p, int isBG){
 		int status;
 		pid_t pid = 0;
 		aborting = 0;
-		pid = waitpid(-1, &status, 0); // not only sigchld may wake it up
+		pid = waitpid(-1, &status, 0);
 		if (aborting)
-
+			break;
 		if(pid == 0 || pid == -1)
 		{
 			continue;
@@ -430,26 +392,21 @@ void runPipeLine(pipeline* p, int isBG){
 		if (pos == -1)
 			continue;
 		struct spawnedProcessData* pData = &(BGexitStatus[pos]);
-		if (pData->hasRunInBG == 0)
-		{
+		if (pData->hasRunInBG == 0)	{
 			removeProcessData(pos);
 			terminatedSpawnedChilds++;
 		}
-		else
-		{
-			if (WIFEXITED(status))
-			{
+		else{
+			if (WIFEXITED(status)){
 				pData->exitNotTerminated = 1;
 				pData->exitTerminationCode = WEXITSTATUS(status);
-			} else
-			{
+			} else	{
 				pData->exitNotTerminated = 0;
 				pData->exitTerminationCode = WTERMSIG(status);
 			}
 			pData->stillRuning = 0;
 		}
 	}
-	//say("PIPELINE SIGN 442\n");
 }
 
 void runLine(line* l, int isBG){
@@ -530,6 +487,11 @@ void printChildStatus(){
 	{
 		if (BGexitStatus[index].stillRuning == 0)
 		{
+			if (BGexitStatus[index].hasRunInBG == 0)
+			{
+				index--;
+				continue;
+			}
 			char txtbuffer[100];
 			sprintf(txtbuffer, "Background process %i terminated. ", BGexitStatus[index].pid);
 			int len = strlen(txtbuffer);
@@ -551,34 +513,27 @@ void printChildStatus(){
 
 
 void SIGCHLD_handler(int i){
-	printf("sigchld\n"); fflush(stdout);
 	askForChildStatus();
 }
 
-void SIGINT_handler(int i)
-{
+void SIGINT_handler(int i){
 	aborting = 1;
 }
 
 
 void registerHandlers(){
-	int r;
 	struct sigaction s;
-	s.sa_handler = SIGINT_handler; // functions
+
+	s.sa_handler = SIGINT_handler; 
 	s.sa_flags = 0;
 	sigemptyset(&s.sa_mask);
-	r = sigaction(SIGINT, &s, NULL);
+	sigaction(SIGINT, &s, NULL);
 
-	s.sa_handler = SIGCHLD_handler; // functions
-	s.sa_sigaction = NULL; // function2, more precise but unnecessery, if flag = something
+	s.sa_handler = SIGCHLD_handler;
 	s.sa_flags = SA_NOCLDSTOP;
 	sigemptyset(&s.sa_mask);
-	r = sigaction(SIGCHLD, &s, NULL);
+	sigaction(SIGCHLD, &s, NULL);
 
-
-	//printf("trying to kill 1\n"); fflush(stdout);
-	//kill(getpid(), SIGINT);
-	//printf("live 1\n"); fflush(stdout);
 }
 void registerDefaultSignalhandler()
 {
