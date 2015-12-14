@@ -561,38 +561,32 @@ void SIGINT_handler(int i)
 void registerHandlers(){
 	int r;
 	struct sigaction s;
-	printf("registering 2\n"); fflush(stdout);
-	s.sa_handler = &SIGINT_handler; // functions
-	s.sa_sigaction = NULL; // function2, more precise but unnecessery, if flag = something
+	s.sa_handler = SIGINT_handler; // functions
 	s.sa_flags = 0;
-	sigemptyset(&(s.sa_mask));
+	sigemptyset(&s.sa_mask);
 	r = sigaction(SIGINT, &s, NULL);
-	if (r != 0)
-		printf("failed 2\n"); fflush(stdout);
 
-	/*s.sa_handler = SIGCHLD_handler; // functions
+	s.sa_handler = SIGCHLD_handler; // functions
 	s.sa_sigaction = NULL; // function2, more precise but unnecessery, if flag = something
 	s.sa_flags = SA_NOCLDSTOP;
-	sigemptyset(&(s.sa_mask));
-	r = sigaction(SIGCHLD, &s, NULL);*/
+	sigemptyset(&s.sa_mask);
+	r = sigaction(SIGCHLD, &s, NULL);
 
-	if (r != 0)
-		printf("failed 1\n"); fflush(stdout);
 
-	printf("trying to kill 1\n"); fflush(stdout);
-	kill(getpid(), SIGINT);
-	printf("live 1\n"); fflush(stdout);
+	//printf("trying to kill 1\n"); fflush(stdout);
+	//kill(getpid(), SIGINT);
+	//printf("live 1\n"); fflush(stdout);
 }
 void registerDefaultSignalhandler()
 {
 	struct sigaction s;
 	s.sa_handler = SIG_DFL;
 	s.sa_flags = 0;
-	sigemptyset(&(s.sa_mask));
+	sigemptyset(&s.sa_mask);
 	sigaction(SIGINT, &s, NULL);
 
 	s.sa_handler = SIG_DFL;
 	s.sa_flags = 0;
-	sigemptyset(&(s.sa_mask));
+	sigemptyset(&s.sa_mask);
 	sigaction(SIGCHLD, &s, NULL);
 }
