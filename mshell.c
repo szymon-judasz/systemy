@@ -56,8 +56,7 @@ char linebuf[MAX_LINE_LENGTH + 1];
 char buffer[2 * MAX_LINE_LENGTH + 2]; // bufor dla read
 char* bufferPtr = buffer;
 
-int countPipelineInLine(line* l);
-int countCommandInPipeLine(pipeline* p);
+
 
 int findEndOfLine(char* tab, int pos, int size);
 int sinkRead(void);
@@ -70,8 +69,10 @@ void runLine(line* l, int isBG);
 void runPipeLine(pipeline* p, int isBG);
 int runCommand(command _command, int *fd, int hasNext, int isBG); // returns 1 when child was spawned, otherwise 0 eg. number of spawned processes
 
+int countPipelineInLine(line* l);
+int countCommandInPipeLine(pipeline* p);
+int ifEmptyPipeline(line* l);
 int ifEmptyCommand(command* c);
-
 
 void registerHandlers();
 volatile int aborting;
@@ -115,7 +116,7 @@ main(int argc, char *argv[]){
 			continue;
 		}
 		ln = parseline(linebuf);
-		if (!ln){
+		if (!ln || ifEmptyPipeline(ln)){
 			write(3, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR));
 			continue;
 		}
@@ -547,4 +548,23 @@ void registerDefaultSignalhandler()
 	s.sa_flags = 0;
 	sigemptyset(&s.sa_mask);
 	sigaction(SIGCHLD, &s, NULL);
+}
+
+int ifEmptyPipeline(line* l)
+{
+	int i;
+	for (i = 0; (l->pipelines)[i] != NULL; i++)
+	{
+		pipeline* pipelineptr = (l->pipelines)[i];
+		if (countCommandInPipeLine(pipelineptr) < 2)
+			continue;
+		int j;
+		for (j = 0; (*pipelineptr)[j] != NULL; j++)
+		{
+			command* commandptr = (*pipelineptr)[j];
+			if (ifEmptyCommand(commandptr))
+				return 1;
+		}
+	}
+	return 0;
 }
