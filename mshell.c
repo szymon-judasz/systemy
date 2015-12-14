@@ -77,7 +77,7 @@ int ifEmptyCommand(command* c);
 
 
 void registerHandlers();
-int aborting;
+volatile int aborting;
 void registerDefaultSignalhandler();
 
 int (*(findFunction)(char*))(char **);
@@ -121,6 +121,9 @@ main(int argc, char *argv[]){
 		int r = sinkRead();
 		if (r == 0){
 			break;
+		} if (r == -2)
+		{
+			continue;
 		}
 		ln = parseline(linebuf);
 		if (!ln){
@@ -257,7 +260,7 @@ int findEndOfLine(char* tab, int pos, int size){
 }
 
 
-// returns 0 if EOF, -1 if signal, 1 else
+// returns 0 if EOF, -1 if signal, 1 else, -2 if sigint
 int sinkRead(){
 	int pos = 0; // pozycja w buforze lini
 	
@@ -267,9 +270,10 @@ int sinkRead(){
 		errno = 0;
 		status = read(STDIN_FILENO, &buff, 1);
 		if(status == -1){
-			printf("read failed\n");
-			fflush(stdout);
-			if (errno == EAGAIN || errno == EINTR){
+			if (errno == EINTR)
+			{
+				return -2;
+			} else if (errno == EAGAIN){
 				continue;
 			} else {
 				return -1;
@@ -553,7 +557,6 @@ void SIGCHLD_handler(int i){
 
 void SIGINT_handler(int i)
 {
-	write(1, "SIGINT", 6);
 	aborting = 1;
 }
 
