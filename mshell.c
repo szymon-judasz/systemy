@@ -20,7 +20,7 @@
 #define bool int
 
 
-#define ChildStatusBuffer 100
+#define ChildStatusBuffer 1000
 
 #define DEBUG
 #include "include/siparse.h"
@@ -35,7 +35,7 @@ typedef struct spawnedProcessData{
 	int stillRuning;
 } spawnedProcessData;
 
-int amountSpawnedProcess = 0;
+volatile int amountSpawnedProcess = 0;
 spawnedProcessData BGexitStatus[ChildStatusBuffer];
 int findProcessData(pid_t pid);
 void addProcessData(struct spawnedProcessData pData);
@@ -80,6 +80,7 @@ void registerDefaultSignalhandler();
 
 int (*(findFunction)(char*))(char **);
 
+volatile int child_can_start;
 
 int
 main(int argc, char *argv[]){
@@ -117,7 +118,7 @@ main(int argc, char *argv[]){
 		}
 		ln = parseline(linebuf);
 		if (!ln || ifEmptyPipeline(ln)){
-			write(3, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR));
+			write(2, SYNTAX_ERROR_STR, sizeof(SYNTAX_ERROR_STR));
 			continue;
 		}
 
@@ -127,6 +128,7 @@ main(int argc, char *argv[]){
 
 
 int runCommand(command _command, int *fd, int hasNext, int isBG){
+	child_can_start = 0;
 	// command from builtins table
 	if(findFunction(_command.argv[0]) != NULL){
 		int result = (findFunction(_command.argv[0]))(_command.argv);
@@ -144,7 +146,11 @@ int runCommand(command _command, int *fd, int hasNext, int isBG){
 		/* ******************* */
 		int childpid = fork(); 
 		if (childpid == 0){ // KID
+			//while (child_can_start == 0)
+			//{
+			//}
 			// registering default signal handlers
+
 			registerDefaultSignalhandler();
 			if (isBG) {
 				setsid();
@@ -152,13 +158,21 @@ int runCommand(command _command, int *fd, int hasNext, int isBG){
 			// switching fd
 			if(fd[0] != -1)
 			{
-				dup2(fd[0], 0);
+				dup2(fd[0], 0); 
 				close(fd[0]);
 			}
 			if(fd[1] != -1 && (hasNext || isBG))
 			{
 				dup2(fd[1], 1);
 				close(fd[1]);
+			}
+			if (fd[2] != -1)
+			{
+				close(fd[2]);
+			}			
+			if (fd[3] != -1)
+			{
+				close(fd[3]);
 			}
 			
 			// REDIRS handling
@@ -223,6 +237,7 @@ int runCommand(command _command, int *fd, int hasNext, int isBG){
 		spawned.hasRunInBG = isBG;
 		spawned.stillRuning = 1;
 		addProcessData(spawned);
+		//kill(childpid, SIGUSR1);
 	}
 	return 1;
 }
@@ -357,10 +372,13 @@ void runPipeLine(pipeline* p, int isBG){
 		}
 		if(prevpipe[1] != -1){
 			close(prevpipe[1]);
+			prevpipe[1] = -1;
 		}
-		int fd[2];
+		int fd[4];
 		fd[0] = prevpipe[0];
 		fd[1] = curpipe[1];
+		fd[2] = prevpipe[1];
+		fd[3] = curpipe[0];
 		spawnedProccesses += runCommand(*((*p)[i]), fd, (*p)[i+1] != NULL, isBG);
 		if(prevpipe[0] != -1) {
 			close(prevpipe[0]);
@@ -382,19 +400,30 @@ void runPipeLine(pipeline* p, int isBG){
 		int status;
 		pid_t pid = 0;
 		aborting = 0;
+		int fault = 0;
 		pid = waitpid(-1, &status, 0);
 		if (aborting)
+		{
+			//write(1, "a", 1);
+			//if (fault)
+			//	write(1, "pos", 3);
 			break;
+		}
+
 		if(pid == 0 || pid == -1)
 		{
 			continue;
 		}
 		int pos = findProcessData(pid);
-		if (pos == -1)
+		if (pos == -1) // bug nie dla tego ze pos sie jakos ustawi
+		{
+			fault = 1;
 			continue;
+		}
+
 		struct spawnedProcessData* pData = &(BGexitStatus[pos]);
 		if (pData->hasRunInBG == 0)	{
-			removeProcessData(pos);
+			removeProcessData(pid);
 			terminatedSpawnedChilds++;
 		}
 		else{
@@ -490,6 +519,7 @@ void printChildStatus(){
 		{
 			if (BGexitStatus[index].hasRunInBG == 0)
 			{
+				removeProcessData(BGexitStatus[index].pid);
 				index--;
 				continue;
 			}
@@ -514,7 +544,7 @@ void printChildStatus(){
 
 
 void SIGCHLD_handler(int i){
-	askForChildStatus();
+	//askForChildStatus();
 }
 
 void SIGINT_handler(int i){
@@ -555,7 +585,7 @@ int ifEmptyPipeline(line* l)
 	int i;
 	for (i = 0; (l->pipelines)[i] != NULL; i++)
 	{
-		pipeline* pipelineptr = (l->pipelines)[i];
+		pipeline* pipelineptr = &((l->pipelines)[i]);
 		if (countCommandInPipeLine(pipelineptr) < 2)
 			continue;
 		int j;
@@ -563,7 +593,10 @@ int ifEmptyPipeline(line* l)
 		{
 			command* commandptr = (*pipelineptr)[j];
 			if (ifEmptyCommand(commandptr))
+			{
 				return 1;
+			}
+
 		}
 	}
 	return 0;
